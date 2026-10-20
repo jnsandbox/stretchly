@@ -523,7 +523,7 @@ function onSuspendOrLock () {
       log.info('Stretchly: not pausing for suspendOrLock because paused already')
     } else {
       pausedForSuspendOrLock = true
-      pauseBreaks(1)
+      pauseBreaks(1, false)
       updateTray()
     }
   } else {
@@ -1308,9 +1308,10 @@ function loadIdeas () {
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 
-function pauseBreaks (milliseconds) {
-  // The focus log already records both ends of a screen lock or suspend.
-  if (!pausedForSuspendOrLock) {
+// milliseconds is 1 for an indefinite pause.
+// The lock and suspend handler passes shouldLog false: the focus log already records both ends.
+function pauseBreaks (milliseconds, shouldLog = true) {
+  if (shouldLog) {
     breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
   }
   if (microbreakWins) {
