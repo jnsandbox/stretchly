@@ -391,6 +391,12 @@ async function initialize (isAppStart = true) {
       finishBreak(shouldPlaySound, shouldPlanNext)
     })
     breakPlanner.on('resumeBreaks', () => { resumeBreaks() })
+    breakPlanner.on('naturalBreakCleared', () => {
+      breakLog.recordNaturalBreakCleared({ scheduledBreakType: scheduledBreakType() })
+    })
+    breakPlanner.on('naturalBreakRestarted', (idleMilliseconds) => {
+      breakLog.recordNaturalBreakRestarted({ idleMilliseconds })
+    })
     breakPlanner.on('updateToolTip', function () {
       updateTray()
     })
@@ -1250,7 +1256,16 @@ function skipToBreak (delay) {
   updateTray()
 }
 
+// The break the planner has scheduled next or is showing; null while paused or cleared.
+function scheduledBreakType () {
+  const reference = breakPlanner.scheduler?.reference
+  if (['startMicrobreakNotification', 'startMicrobreak', 'finishMicrobreak'].includes(reference)) return 'mini'
+  if (['startBreakNotification', 'startBreak', 'finishBreak'].includes(reference)) return 'long'
+  return null
+}
+
 function resetBreaks () {
+  breakLog.recordReset({ scheduledBreakType: scheduledBreakType() })
   if (microbreakWins) {
     microbreakWins = breakComplete(false, microbreakWins)
   }
@@ -1299,7 +1314,12 @@ function loadIdeas () {
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 
+// milliseconds is 1 for an indefinite pause.
 function pauseBreaks (milliseconds) {
+  breakLog.recordPaused({
+    scheduledBreakType: scheduledBreakType(),
+    pauseMilliseconds: milliseconds === 1 ? null : milliseconds
+  })
   if (microbreakWins) {
     increaseDanger(1)
     finishMicrobreak(false)

@@ -156,6 +156,61 @@ describe('breakLog', () => {
     ])
   })
 
+  it('writes a timed pause with the scheduled break type and its length in minutes', async () => {
+    new BreakLog(logFilePath).recordPaused({ scheduledBreakType: 'mini', pauseMilliseconds: 1800000 })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'paused', break_type: 'mini', pause_minutes: 30 }
+    ])
+  })
+
+  it('writes no pause length for an indefinite pause', async () => {
+    new BreakLog(logFilePath).recordPaused({ scheduledBreakType: 'long', pauseMilliseconds: null })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'paused', break_type: 'long', pause_minutes: null }
+    ])
+  })
+
+  it('writes a pause during a break with the shown break type and the seconds it was shown', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.noteBreakShown({ breakType: 'long' })
+    vi.advanceTimersByTime(7000)
+    breakLog.recordPaused({ scheduledBreakType: 'long', pauseMilliseconds: 3600000 })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'paused', break_type: 'long', seconds_shown: 7, pause_minutes: 60 }
+    ])
+  })
+
+  it('writes a reset with the scheduled break type', async () => {
+    new BreakLog(logFilePath).recordReset({ scheduledBreakType: 'mini' })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'reset', break_type: 'mini' }
+    ])
+  })
+
+  it('writes a reset during a break with the shown break type and the seconds it was shown', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.noteBreakShown({ breakType: 'mini' })
+    vi.advanceTimersByTime(2500)
+    breakLog.recordReset({ scheduledBreakType: 'mini' })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'reset', break_type: 'mini', seconds_shown: 2.5 }
+    ])
+  })
+
+  it('writes a natural break clearing the schedule with the break it cleared', async () => {
+    new BreakLog(logFilePath).recordNaturalBreakCleared({ scheduledBreakType: 'long' })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'natural_break_cleared', break_type: 'long' }
+    ])
+  })
+
+  it('writes the idle seconds when a natural break restarts the schedule', async () => {
+    new BreakLog(logFilePath).recordNaturalBreakRestarted({ idleMilliseconds: 412000 })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'natural_break_restarted', idle_seconds: 412 }
+    ])
+  })
+
   it('stamps the UTC offset in force, which changes with daylight saving time', async () => {
     vi.setSystemTime(new Date('2026-01-20T07:15:02.042Z'))
     new BreakLog(logFilePath).recordStart()

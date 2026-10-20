@@ -35,15 +35,18 @@ class BreaksPlanner extends EventEmitter {
 
     this.naturalBreaksManager.on('clearBreakScheduler', () => {
       if (!this.isPaused && this.scheduler.reference !== 'finishMicrobreak' && this.scheduler.reference !== 'finishBreak' && this.scheduler.reference !== null) {
+        // Emitted before clearing, so listeners still see which break was scheduled.
+        this.emit('naturalBreakCleared')
         this.clear()
         log.info('Stretchly: pausing breaks because of idle time')
       }
     })
 
-    this.naturalBreaksManager.on('naturalBreakFinished', () => {
+    this.naturalBreaksManager.on('naturalBreakFinished', (idleMilliseconds) => {
       if (!this.isPaused && this.scheduler.reference !== 'finishMicrobreak' && this.scheduler.reference !== 'finishBreak' && !this.dndManager.isOnDnd) {
         this.reset()
         log.info('Stretchly: resuming breaks after idle time')
+        this.emit('naturalBreakRestarted', idleMilliseconds)
         this.emit('updateToolTip')
       }
     })
