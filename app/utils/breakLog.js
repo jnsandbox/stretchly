@@ -1,18 +1,23 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 
-function twoDigits (number) {
-  return String(number).padStart(2, '0')
+function padded (number, width = 2) {
+  return String(number).padStart(width, '0')
 }
 
-// Local time as 2026-10-13T15:12:03.042+02:00, the focus log's format, so the two logs join on time.
+// Local time as 2026-10-13T15:12:03.042+02:00, the format of the GNOME extension's
+// ~/.local/state/break-timer/focus.jsonl, so the two logs join on time.
 function localTimestamp (date) {
   const offsetMinutes = -date.getTimezoneOffset()
   const offsetSign = offsetMinutes < 0 ? '-' : '+'
   const absoluteOffsetMinutes = Math.abs(offsetMinutes)
-  return `${date.getFullYear()}-${twoDigits(date.getMonth() + 1)}-${twoDigits(date.getDate())}` +
-    `T${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}` +
-    `.${String(date.getMilliseconds()).padStart(3, '0')}` +
-    `${offsetSign}${twoDigits(Math.floor(absoluteOffsetMinutes / 60))}:${twoDigits(absoluteOffsetMinutes % 60)}`
+  return `${date.getFullYear()}-${padded(date.getMonth() + 1)}-${padded(date.getDate())}` +
+    `T${padded(date.getHours())}:${padded(date.getMinutes())}:${padded(date.getSeconds())}` +
+    `.${padded(date.getMilliseconds(), 3)}` +
+    `${offsetSign}${padded(Math.floor(absoluteOffsetMinutes / 60))}:${padded(absoluteOffsetMinutes % 60)}`
+}
+
+function minutesToOneDecimal (milliseconds) {
+  return Math.round(milliseconds / 6000) / 10
 }
 
 // With no earlier line there was no earlier run to end badly.
@@ -46,7 +51,7 @@ export default class BreakLog {
       event: 'quit',
       minutes_to_next_break: millisecondsToNextBreak === null
         ? null
-        : Math.round(millisecondsToNextBreak / 6000) / 10
+        : minutesToOneDecimal(millisecondsToNextBreak)
     })
   }
 
