@@ -49,4 +49,41 @@ describe('breaksPlanner', () => {
     breaksPlanner.skipToBreak()
     expect(breaksPlanner.postponesOfCurrentBreak).toBe(0)
   })
+
+  it('plans a Mini break first', () => {
+    expect(breaksPlanner.plannedBreakType).toBe('mini')
+  })
+
+  it('reports a Long break once skipped ahead to one', () => {
+    breaksPlanner.skipToBreak()
+    expect(breaksPlanner.plannedBreakType).toBe('long')
+  })
+
+  it('reports the break showing while its popup is up', () => {
+    breaksPlanner.skipToBreak()
+    breaksPlanner.emit('breakStarted', false)
+    expect(breaksPlanner.plannedBreakType).toBe('long')
+  })
+
+  it('reports no break while paused', () => {
+    breaksPlanner.pause(1800000)
+    expect(breaksPlanner.plannedBreakType).toBe(null)
+  })
+
+  it('reports the break it cleared when idle clears the schedule, once per idle spell', () => {
+    const clearedBreakTypes = []
+    breaksPlanner.on('naturalBreakCleared', (breakType) => clearedBreakTypes.push(breakType))
+    // The idle monitor repeats this on every check while the idle spell lasts.
+    breaksPlanner.naturalBreaksManager.emit('clearBreakScheduler')
+    breaksPlanner.naturalBreaksManager.emit('clearBreakScheduler')
+    expect(clearedBreakTypes).toEqual(['mini'])
+  })
+
+  it('reports the idle time when it restarts the schedule after idle', () => {
+    const restartIdleTimes = []
+    breaksPlanner.on('naturalBreakRestarted', (idleMilliseconds) => restartIdleTimes.push(idleMilliseconds))
+    breaksPlanner.naturalBreaksManager.emit('clearBreakScheduler')
+    breaksPlanner.naturalBreaksManager.emit('naturalBreakFinished', 412000)
+    expect(restartIdleTimes).toEqual([412000])
+  })
 })

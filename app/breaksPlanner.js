@@ -35,8 +35,7 @@ class BreaksPlanner extends EventEmitter {
 
     this.naturalBreaksManager.on('clearBreakScheduler', () => {
       if (!this.isPaused && this.scheduler.reference !== 'finishMicrobreak' && this.scheduler.reference !== 'finishBreak' && this.scheduler.reference !== null) {
-        // Emitted before clearing, so listeners still see which break was scheduled.
-        this.emit('naturalBreakCleared')
+        this.emit('naturalBreakCleared', this.plannedBreakType)
         this.clear()
         log.info('Stretchly: pausing breaks because of idle time')
       }
@@ -257,6 +256,14 @@ class BreaksPlanner extends EventEmitter {
   reset () {
     this.clear()
     this.resume()
+  }
+
+  // 'mini' or 'long' for the break scheduled or showing; null while paused or cleared.
+  get plannedBreakType () {
+    const reference = this.scheduler?.reference
+    if (['startMicrobreakNotification', 'startMicrobreak', 'finishMicrobreak'].includes(reference)) return 'mini'
+    if (['startBreakNotification', 'startBreak', 'finishBreak'].includes(reference)) return 'long'
+    return null
   }
 
   get _scheduledBreakType () {

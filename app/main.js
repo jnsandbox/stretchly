@@ -391,8 +391,8 @@ async function initialize (isAppStart = true) {
       finishBreak(shouldPlaySound, shouldPlanNext)
     })
     breakPlanner.on('resumeBreaks', () => { resumeBreaks() })
-    breakPlanner.on('naturalBreakCleared', () => {
-      breakLog.recordNaturalBreakCleared({ scheduledBreakType: scheduledBreakType() })
+    breakPlanner.on('naturalBreakCleared', (clearedBreakType) => {
+      breakLog.recordNaturalBreakCleared({ scheduledBreakType: clearedBreakType })
     })
     breakPlanner.on('naturalBreakRestarted', (idleMilliseconds) => {
       breakLog.recordNaturalBreakRestarted({ idleMilliseconds })
@@ -1256,16 +1256,8 @@ function skipToBreak (delay) {
   updateTray()
 }
 
-// The break the planner has scheduled next or is showing; null while paused or cleared.
-function scheduledBreakType () {
-  const reference = breakPlanner.scheduler?.reference
-  if (['startMicrobreakNotification', 'startMicrobreak', 'finishMicrobreak'].includes(reference)) return 'mini'
-  if (['startBreakNotification', 'startBreak', 'finishBreak'].includes(reference)) return 'long'
-  return null
-}
-
 function resetBreaks () {
-  breakLog.recordReset({ scheduledBreakType: scheduledBreakType() })
+  breakLog.recordReset({ scheduledBreakType: breakPlanner.plannedBreakType })
   if (microbreakWins) {
     microbreakWins = breakComplete(false, microbreakWins)
   }
@@ -1314,12 +1306,8 @@ function loadIdeas () {
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 
-// milliseconds is 1 for an indefinite pause.
 function pauseBreaks (milliseconds) {
-  breakLog.recordPaused({
-    scheduledBreakType: scheduledBreakType(),
-    pauseMilliseconds: milliseconds === 1 ? null : milliseconds
-  })
+  breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
   if (microbreakWins) {
     increaseDanger(1)
     finishMicrobreak(false)

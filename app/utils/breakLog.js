@@ -94,11 +94,11 @@ export default class BreakLog {
     }
   }
 
-  // pauseMilliseconds is null for an indefinite pause.
+  // pauseMilliseconds is stretchly's own pause length, where 1 means indefinite.
   recordPaused ({ scheduledBreakType, pauseMilliseconds }) {
     this._appendScheduleEvent({
       event: 'paused',
-      pause_minutes: pauseMilliseconds === null ? null : minutesToOneDecimal(pauseMilliseconds)
+      pause_minutes: pauseMilliseconds === 1 ? null : minutesToOneDecimal(pauseMilliseconds)
     }, scheduledBreakType)
   }
 
@@ -106,7 +106,7 @@ export default class BreakLog {
     this._appendScheduleEvent({ event: 'reset' }, scheduledBreakType)
   }
 
-  // stretchly clears the schedule for idle only while no popup shows.
+  // stretchly never clears for idle while a popup shows, so there is no shown break to report.
   recordNaturalBreakCleared ({ scheduledBreakType }) {
     this._append({ event: 'natural_break_cleared', break_type: scheduledBreakType })
   }

@@ -163,8 +163,8 @@ describe('breakLog', () => {
     ])
   })
 
-  it('writes no pause length for an indefinite pause', async () => {
-    new BreakLog(logFilePath).recordPaused({ scheduledBreakType: 'long', pauseMilliseconds: null })
+  it('writes no pause length for an indefinite pause, which stretchly passes as 1 ms', async () => {
+    new BreakLog(logFilePath).recordPaused({ scheduledBreakType: 'long', pauseMilliseconds: 1 })
     expect(await readLogLinesWithoutTime()).toEqual([
       { event: 'paused', break_type: 'long', pause_minutes: null }
     ])
