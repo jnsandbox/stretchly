@@ -375,6 +375,8 @@ async function initialize (isAppStart = true) {
         enterMiniBreakManualContinuation(shouldPlaySound)
         return
       }
+      // shouldPlanNext is false when a 'pause' app exclusion cuts the break off.
+      if (shouldPlanNext) breakLog.recordTaken()
       decreaseDanger(1)
       finishMicrobreak(shouldPlaySound, shouldPlanNext)
     })
@@ -384,6 +386,7 @@ async function initialize (isAppStart = true) {
         enterLongBreakManualContinuation(shouldPlaySound)
         return
       }
+      if (shouldPlanNext) breakLog.recordTaken()
       decreaseDanger(2)
       finishBreak(shouldPlaySound, shouldPlanNext)
     })
@@ -781,6 +784,7 @@ function startMicrobreak () {
 
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
+  breakLog.recordBreakShown({ breakType: 'mini' })
 
   const idea = nextIdea || (settings.get('ideas') ? microbreakIdeas.randomElement : [''])
   nextIdea = null
@@ -800,6 +804,7 @@ function startMicrobreak () {
         log.info('Stretchly: end break shortcut pressed during Mini break')
         const passedPercent = (Date.now() - startTime) / breakDuration * 100
         if (passedPercent >= 100) {
+          breakLog.recordTaken()
           decreaseDanger(1)
           finishMicrobreak(false)
           return
@@ -807,6 +812,7 @@ function startMicrobreak () {
         if (canPostpone(postponable, passedPercent, postponableDurationPercent)) {
           postponeMicrobreak()
         } else if (canSkip(strictMode, postponable, passedPercent, postponableDurationPercent)) {
+          breakLog.recordFinishedEarly()
           increaseDanger(1)
           finishMicrobreak(false)
         }
@@ -949,6 +955,7 @@ function startBreak () {
 
   const modalPath = 'file://' + join(__dirname, '/break.html')
   breakWins = []
+  breakLog.recordBreakShown({ breakType: 'long' })
 
   const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
   const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
@@ -969,6 +976,7 @@ function startBreak () {
         log.info('Stretchly: end break shortcut pressed during Long break')
         const passedPercent = (Date.now() - startTime) / breakDuration * 100
         if (passedPercent >= 100) {
+          breakLog.recordTaken()
           decreaseDanger(2)
           finishBreak(false)
           return
@@ -976,6 +984,7 @@ function startBreak () {
         if (canPostpone(postponable, passedPercent, postponableDurationPercent)) {
           postponeBreak()
         } else if (canSkip(strictMode, postponable, passedPercent, postponableDurationPercent)) {
+          breakLog.recordFinishedEarly()
           increaseDanger(2)
           finishBreak(false)
         }
@@ -1104,6 +1113,7 @@ function startBreak () {
 }
 
 function breakComplete (shouldPlaySound, windows, breakType) {
+  breakLog.breakPopupClosed()
   if (settings.get('endBreakShortcut') && globalShortcut.isRegistered(settings.get('endBreakShortcut'))) {
     globalShortcut.unregister(settings.get('endBreakShortcut'))
   }
@@ -1179,6 +1189,7 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
 }
 
 function postponeMicrobreak () {
+  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesNumber })
   increaseDanger(1)
   microbreakWins = breakComplete(false, microbreakWins, 'mini')
   breakPlanner.postponeCurrentBreak()
@@ -1187,6 +1198,7 @@ function postponeMicrobreak () {
 }
 
 function postponeBreak () {
+  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesNumber })
   increaseDanger(1)
   breakWins = breakComplete(false, breakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1195,6 +1207,9 @@ function postponeBreak () {
 }
 
 function skipToMicrobreak (delay) {
+  if (microbreakWins || breakWins) {
+    breakLog.recordSkippedAhead()
+  }
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1214,6 +1229,9 @@ function skipToMicrobreak (delay) {
 }
 
 function skipToBreak (delay) {
+  if (microbreakWins || breakWins) {
+    breakLog.recordSkippedAhead()
+  }
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1581,8 +1599,10 @@ ipcMain.on('postpone-long-break', function (event) {
 ipcMain.on('finish-mini-break', function (event, shouldPlaySound, manualAwaiting) {
   log.info(`Stretchly: finish button clicked during Mini break (manualAwaiting: ${manualAwaiting})`)
   if (manualAwaiting) {
+    breakLog.recordTaken()
     decreaseDanger(1)
   } else {
+    breakLog.recordFinishedEarly()
     increaseDanger(1)
   }
   finishMicrobreak(shouldPlaySound)
@@ -1591,8 +1611,10 @@ ipcMain.on('finish-mini-break', function (event, shouldPlaySound, manualAwaiting
 ipcMain.on('finish-long-break', function (event, shouldPlaySound, manualAwaiting) {
   log.info(`Stretchly: finish button clicked during Long break (manualAwaiting: ${manualAwaiting})`)
   if (manualAwaiting) {
+    breakLog.recordTaken()
     decreaseDanger(2)
   } else {
+    breakLog.recordFinishedEarly()
     increaseDanger(2)
   }
   finishBreak(shouldPlaySound)

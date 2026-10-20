@@ -20,6 +20,10 @@ function minutesToOneDecimal (milliseconds) {
   return Math.round(milliseconds / 6000) / 10
 }
 
+function secondsToOneDecimal (milliseconds) {
+  return Math.round(milliseconds / 100) / 10
+}
+
 // With no earlier line there was no earlier run to end badly.
 function previousRunEndedCleanly (previousContents) {
   const lastLine = previousContents.trimEnd().split('\n').at(-1)
@@ -34,6 +38,35 @@ function previousRunEndedCleanly (previousContents) {
 export default class BreakLog {
   constructor (logFilePath) {
     this.logFilePath = logFilePath
+    this.shownBreak = null
+  }
+
+  // breakType is 'mini' or 'long'. Break events and a quit read the popup shown last.
+  recordBreakShown ({ breakType }) {
+    this.shownBreak = { breakType, shownAt: Date.now() }
+  }
+
+  // Called on every close, whether or not the close wrote a line, so a later quit
+  // does not report a popup that is gone.
+  breakPopupClosed () {
+    this.shownBreak = null
+  }
+
+  recordTaken () {
+    this._appendBreakEvent({ event: 'taken' })
+  }
+
+  recordFinishedEarly () {
+    this._appendBreakEvent({ event: 'finished_early' })
+  }
+
+  // previousPostpones counts this break's postpones before this one.
+  recordPostponed ({ previousPostpones }) {
+    this._appendBreakEvent({ event: 'postponed', previous_postpones: previousPostpones })
+  }
+
+  recordSkippedAhead () {
+    this._appendBreakEvent({ event: 'skipped_ahead' })
   }
 
   recordStart () {
@@ -47,11 +80,25 @@ export default class BreakLog {
 
   // millisecondsToNextBreak is null while paused or during a break.
   recordQuit ({ millisecondsToNextBreak }) {
-    this._append({
+    const fields = {
       event: 'quit',
       minutes_to_next_break: millisecondsToNextBreak === null
         ? null
         : minutesToOneDecimal(millisecondsToNextBreak)
+    }
+    if (this.shownBreak) {
+      this._appendBreakEvent(fields)
+    } else {
+      this._append(fields)
+    }
+  }
+
+  // Nulls mark a call stretchly made with no popup on record; the event itself still counts.
+  _appendBreakEvent (fields) {
+    this._append({
+      ...fields,
+      break_type: this.shownBreak?.breakType ?? null,
+      seconds_shown: this.shownBreak ? secondsToOneDecimal(Date.now() - this.shownBreak.shownAt) : null
     })
   }
 
