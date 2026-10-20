@@ -1267,6 +1267,8 @@ function resetBreaks () {
   danger = 0
   log.info(`Stretchly: danger reset to ${danger}`)
   breakPlanner.reset()
+  // A reset while paused also ends the pause.
+  breakLog.recordResumed()
   log.info('Stretchly: resetting breaks')
   updateTray()
 }
@@ -1307,7 +1309,10 @@ function loadIdeas () {
 }
 
 function pauseBreaks (milliseconds) {
-  breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
+  // The focus log already records both ends of a screen lock or suspend.
+  if (!pausedForSuspendOrLock) {
+    breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
+  }
   if (microbreakWins) {
     increaseDanger(1)
     finishMicrobreak(false)
@@ -1326,6 +1331,7 @@ function resumeBreaks (notify = true) {
     log.info('Stretchly: not resuming breaks because in Do Not Disturb')
   } else {
     breakPlanner.resume()
+    breakLog.recordResumed()
     log.info('Stretchly: resuming breaks')
     if (notify) {
       showNotification(i18next.t('main.resumingBreaks'))

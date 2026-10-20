@@ -40,6 +40,7 @@ export default class BreakLog {
   constructor (logFilePath) {
     this.logFilePath = logFilePath
     this.shownBreak = null
+    this.pausedAt = null
   }
 
   // breakType is 'mini' or 'long'. Break events and a quit read the popup shown last.
@@ -96,10 +97,20 @@ export default class BreakLog {
 
   // pauseMilliseconds is stretchly's own pause length, where 1 means indefinite.
   recordPaused ({ scheduledBreakType, pauseMilliseconds }) {
+    // A pause while paused only changes the length; breaks stopped at the first.
+    this.pausedAt ??= Date.now()
     this._appendScheduleEvent({
       event: 'paused',
       pause_minutes: pauseMilliseconds === 1 ? null : minutesToOneDecimal(pauseMilliseconds)
     }, scheduledBreakType)
+  }
+
+  // Writes nothing unless a logged pause is open, so stretchly's unlogged pause for a
+  // screen lock or suspend, and a reset while not paused, end silently.
+  recordResumed () {
+    if (this.pausedAt === null) return
+    this._append({ event: 'resumed', paused_minutes: minutesToOneDecimal(Date.now() - this.pausedAt) })
+    this.pausedAt = null
   }
 
   recordReset ({ scheduledBreakType }) {

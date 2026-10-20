@@ -180,6 +180,34 @@ describe('breakLog', () => {
     ])
   })
 
+  it('writes how long a pause lasted when it ends', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.recordPaused({ scheduledBreakType: 'mini', pauseMilliseconds: 3600000 })
+    vi.advanceTimersByTime(2730000)
+    breakLog.recordResumed()
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'paused', break_type: 'mini', pause_minutes: 60 },
+      { event: 'resumed', paused_minutes: 45.5 }
+    ])
+  })
+
+  it('writes nothing when breaks resume with no logged pause to end', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.recordResumed()
+    breakLog.recordStart()
+    expect((await readLogLinesWithoutTime()).map(line => line.event)).toEqual(['start'])
+  })
+
+  it('measures a pause from when breaks stopped, across a second pause while paused', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.recordPaused({ scheduledBreakType: 'mini', pauseMilliseconds: 1800000 })
+    vi.advanceTimersByTime(600000)
+    breakLog.recordPaused({ scheduledBreakType: null, pauseMilliseconds: 3600000 })
+    vi.advanceTimersByTime(600000)
+    breakLog.recordResumed()
+    expect((await readLogLinesWithoutTime()).at(-1)).toEqual({ event: 'resumed', paused_minutes: 20 })
+  })
+
   it('writes a reset with the scheduled break type', async () => {
     new BreakLog(logFilePath).recordReset({ scheduledBreakType: 'mini' })
     expect(await readLogLinesWithoutTime()).toEqual([
