@@ -784,7 +784,7 @@ function startMicrobreak () {
 
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
-  breakLog.recordBreakShown({ breakType: 'mini' })
+  breakLog.noteBreakShown({ breakType: 'mini' })
 
   const idea = nextIdea || (settings.get('ideas') ? microbreakIdeas.randomElement : [''])
   nextIdea = null
@@ -955,7 +955,7 @@ function startBreak () {
 
   const modalPath = 'file://' + join(__dirname, '/break.html')
   breakWins = []
-  breakLog.recordBreakShown({ breakType: 'long' })
+  breakLog.noteBreakShown({ breakType: 'long' })
 
   const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
   const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
@@ -1113,7 +1113,7 @@ function startBreak () {
 }
 
 function breakComplete (shouldPlaySound, windows, breakType) {
-  breakLog.breakPopupClosed()
+  breakLog.noteBreakClosed()
   if (settings.get('endBreakShortcut') && globalShortcut.isRegistered(settings.get('endBreakShortcut'))) {
     globalShortcut.unregister(settings.get('endBreakShortcut'))
   }
@@ -1189,7 +1189,7 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
 }
 
 function postponeMicrobreak () {
-  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesNumber })
+  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesOfCurrentBreak })
   increaseDanger(1)
   microbreakWins = breakComplete(false, microbreakWins, 'mini')
   breakPlanner.postponeCurrentBreak()
@@ -1198,7 +1198,7 @@ function postponeMicrobreak () {
 }
 
 function postponeBreak () {
-  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesNumber })
+  breakLog.recordPostponed({ previousPostpones: breakPlanner.postponesOfCurrentBreak })
   increaseDanger(1)
   breakWins = breakComplete(false, breakWins, 'long')
   breakPlanner.postponeCurrentBreak()

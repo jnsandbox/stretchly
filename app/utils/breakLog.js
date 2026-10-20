@@ -35,6 +35,7 @@ function previousRunEndedCleanly (previousContents) {
   }
 }
 
+// record… methods append a line; note… methods only update what later lines report.
 export default class BreakLog {
   constructor (logFilePath) {
     this.logFilePath = logFilePath
@@ -42,13 +43,13 @@ export default class BreakLog {
   }
 
   // breakType is 'mini' or 'long'. Break events and a quit read the popup shown last.
-  recordBreakShown ({ breakType }) {
+  noteBreakShown ({ breakType }) {
     this.shownBreak = { breakType, shownAt: Date.now() }
   }
 
   // Called on every close, whether or not the close wrote a line, so a later quit
   // does not report a popup that is gone.
-  breakPopupClosed () {
+  noteBreakClosed () {
     this.shownBreak = null
   }
 

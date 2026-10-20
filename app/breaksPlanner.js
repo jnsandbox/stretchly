@@ -11,6 +11,9 @@ class BreaksPlanner extends EventEmitter {
     this.settings = settings
     this.breakNumber = 0
     this.postponesNumber = 0
+    // postponesNumber, which the postpone limit reads, survives a skip ahead; this count
+    // does not, so the break log reports postpones of the break actually showing.
+    this.postponesOfCurrentBreak = 0
     this.scheduler = null
     this.isPaused = false
     this.pollersSuspended = false
@@ -112,6 +115,7 @@ class BreaksPlanner extends EventEmitter {
 
   nextBreak () {
     this.postponesNumber = 0
+    this.postponesOfCurrentBreak = 0
     if (this.scheduler) this.scheduler.cancel()
     const shouldBreak = this.settings.get('break')
     const shouldMicrobreak = this.settings.get('microbreak')
@@ -164,6 +168,7 @@ class BreaksPlanner extends EventEmitter {
   postponeCurrentBreak () {
     this.scheduler.cancel()
     this.postponesNumber += 1
+    this.postponesOfCurrentBreak += 1
     let postponeTime, eventName
     const scheduledBreakType = this._scheduledBreakType
     const notification = this.settings.get(`${scheduledBreakType}Notification`)
@@ -181,6 +186,7 @@ class BreaksPlanner extends EventEmitter {
 
   skipToMicrobreak (delay = 100) {
     this.scheduler.cancel()
+    this.postponesOfCurrentBreak = 0
     const shouldBreak = this.settings.get('break')
     const shouldMicrobreak = this.settings.get('microbreak')
     if (shouldBreak && shouldMicrobreak) {
@@ -196,6 +202,7 @@ class BreaksPlanner extends EventEmitter {
 
   skipToBreak (delay = 100) {
     this.scheduler.cancel()
+    this.postponesOfCurrentBreak = 0
     const shouldBreak = this.settings.get('break')
     const shouldMicrobreak = this.settings.get('microbreak')
     if (shouldBreak && shouldMicrobreak) {
@@ -211,6 +218,7 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler.cancel()
     this.breakNumber = 0
     this.postponesNumber = 0
+    this.postponesOfCurrentBreak = 0
   }
 
   pause (milliseconds) {

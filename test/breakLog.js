@@ -15,6 +15,11 @@ describe('breakLog', () => {
     return contents.split('\n').filter(line => line !== '').map(line => JSON.parse(line))
   }
 
+  // Break-event tests leave the time out; its format has tests of its own.
+  async function readLogLinesWithoutTime () {
+    return (await readLogLines()).map(({ time, ...fields }) => fields)
+  }
+
   beforeEach(async () => {
     logFolder = await mkdtemp(join(tmpdir(), 'stretchly-break-log-'))
     logFilePath = join(logFolder, 'breaks.jsonl')
@@ -81,34 +86,34 @@ describe('breakLog', () => {
 
   it('writes a break that ran its full length as taken, with the seconds it was shown', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'long' })
+    breakLog.noteBreakShown({ breakType: 'long' })
     vi.advanceTimersByTime(300000)
     breakLog.recordTaken()
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:20:02.042+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'taken', break_type: 'long', seconds_shown: 300 }
     ])
   })
 
   it('writes a break ended before its full length as finished early, to a tenth of a second', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'mini' })
+    breakLog.noteBreakShown({ breakType: 'mini' })
     vi.advanceTimersByTime(4260)
     breakLog.recordFinishedEarly()
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:15:06.302+02:00', event: 'finished_early', break_type: 'mini', seconds_shown: 4.3 }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'finished_early', break_type: 'mini', seconds_shown: 4.3 }
     ])
   })
 
   it('writes each postpone of one break with its own seconds shown and the postpones before it', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'long' })
+    breakLog.noteBreakShown({ breakType: 'long' })
     vi.advanceTimersByTime(3000)
     breakLog.recordPostponed({ previousPostpones: 0 })
     vi.advanceTimersByTime(300000)
-    breakLog.recordBreakShown({ breakType: 'long' })
+    breakLog.noteBreakShown({ breakType: 'long' })
     vi.advanceTimersByTime(1500)
     breakLog.recordPostponed({ previousPostpones: 1 })
-    expect((await readLogLines()).map(({ time, ...fields }) => fields)).toEqual([
+    expect(await readLogLinesWithoutTime()).toEqual([
       { event: 'postponed', break_type: 'long', seconds_shown: 3, previous_postpones: 0 },
       { event: 'postponed', break_type: 'long', seconds_shown: 1.5, previous_postpones: 1 }
     ])
@@ -116,38 +121,38 @@ describe('breakLog', () => {
 
   it('writes a break left by skipping ahead as skipped ahead', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'mini' })
+    breakLog.noteBreakShown({ breakType: 'mini' })
     vi.advanceTimersByTime(8000)
     breakLog.recordSkippedAhead()
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:15:10.042+02:00', event: 'skipped_ahead', break_type: 'mini', seconds_shown: 8 }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'skipped_ahead', break_type: 'mini', seconds_shown: 8 }
     ])
   })
 
   it('writes a quit during a break with the break type and the seconds it was shown', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'long' })
+    breakLog.noteBreakShown({ breakType: 'long' })
     vi.advanceTimersByTime(12000)
     breakLog.recordQuit({ millisecondsToNextBreak: null })
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:15:14.042+02:00', event: 'quit', minutes_to_next_break: null, break_type: 'long', seconds_shown: 12 }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'quit', minutes_to_next_break: null, break_type: 'long', seconds_shown: 12 }
     ])
   })
 
   it('writes a quit after a break popup closed without break fields', async () => {
     const breakLog = new BreakLog(logFilePath)
-    breakLog.recordBreakShown({ breakType: 'mini' })
-    breakLog.breakPopupClosed()
+    breakLog.noteBreakShown({ breakType: 'mini' })
+    breakLog.noteBreakClosed()
     breakLog.recordQuit({ millisecondsToNextBreak: 60000 })
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:15:02.042+02:00', event: 'quit', minutes_to_next_break: 1 }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'quit', minutes_to_next_break: 1 }
     ])
   })
 
   it('writes a break event with no popup on record with null break fields', async () => {
     new BreakLog(logFilePath).recordTaken()
-    expect(await readLogLines()).toEqual([
-      { time: '2026-10-20T09:15:02.042+02:00', event: 'taken', break_type: null, seconds_shown: null }
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'taken', break_type: null, seconds_shown: null }
     ])
   })
 
