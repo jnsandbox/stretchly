@@ -30,6 +30,7 @@ import { registerBreakShortcuts } from './utils/breakShortcuts.js'
 import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
+import BreakLog from './utils/breakLog.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -72,6 +73,7 @@ nativeTheme.on('updated', function theThemeHasChanged () {
 let microbreakIdeas
 let breakIdeas
 let breakPlanner
+let breakLog = null
 let appIcon = null
 let autostartManager = null
 let displayManager = null
@@ -217,6 +219,7 @@ app.on('before-quit', (event) => {
     log.info('Stretchly: preventing app closure (in break with strict mode)')
     event.preventDefault()
   } else {
+    breakLog?.recordQuit({ millisecondsToNextBreak: breakPlanner?.timeToNextBreak ?? null })
     globalShortcut.unregisterAll()
     // Clean up D-Bus connections
     if (autostartManager) {
@@ -355,6 +358,11 @@ async function initialize (isAppStart = true) {
         log.info(`Stretchly: setting '${key}' to '${JSON.stringify(newValue)}' (was '${JSON.stringify(oldValue)}')`)
       })
     })
+  }
+  // After the settings store, which creates the userData folder on a first run.
+  if (!breakLog) {
+    breakLog = new BreakLog(join(app.getPath('userData'), 'breaks.jsonl'))
+    breakLog.recordStart()
   }
   if (!breakPlanner) {
     breakPlanner = new BreaksPlanner(settings)
