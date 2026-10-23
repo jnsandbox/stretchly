@@ -1,7 +1,7 @@
 import log from 'electron-log/main.js'
 
 // Pauses breaks while the system is suspended or the screen is locked, and resumes them after.
-// Electron and GNOME can both report one screen lock, so only a change in the lock state counts.
+// Electron and GNOME can both report one screen lock, so a repeated lock is ignored.
 class SuspendOrLockPause {
   constructor ({ settings, breakPlanner, pauseBreaks, resumeBreaks, updateTray }) {
     this.settings = settings
@@ -36,12 +36,17 @@ class SuspendOrLockPause {
   }
 
   screenLockChanged (isLocked) {
-    if (isLocked === this.isScreenLocked) return
-    this.isScreenLocked = isLocked
     if (isLocked) {
+      if (this.isScreenLocked) return
+      this.isScreenLocked = true
       this.suspendOrLock()
-    } else {
+    } else if (this.isScreenLocked) {
+      this.isScreenLocked = false
       this.resumeOrUnlock()
+    } else {
+      // An unlock that ends no lock, so there is no pause to end; timers may still have stalled.
+      this.breakPlanner.correctScheduler()
+      this.updateTray()
     }
   }
 

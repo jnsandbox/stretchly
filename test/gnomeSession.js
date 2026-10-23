@@ -2,6 +2,7 @@ import { vi, describe, it, beforeEach, afterEach } from 'vitest'
 import 'chai/register-should'
 import dbus from '@particle/dbus-next'
 import GnomeSession from '../app/utils/gnomeSession.js'
+import { sessionBusDeliveringSignals, screenSaverActiveChanged } from './helpers/sessionBusFakes.js'
 
 vi.mock('@particle/dbus-next', async (importOriginal) => {
   const actualDbus = (await importOriginal()).default
@@ -26,28 +27,6 @@ function sessionBusAnsweringGetIdletime (getIdletime) {
       }
     }))
   }
-}
-
-// A session bus that accepts match rules and lets the test deliver messages on it.
-function sessionBusDeliveringSignals () {
-  const listeners = { message: [], error: [], close: [] }
-  return {
-    on: vi.fn((eventName, listener) => { listeners[eventName].push(listener) }),
-    call: vi.fn(async () => {}),
-    deliver: (message) => listeners.message.forEach(listener => listener(message)),
-    close: () => listeners.close.forEach(listener => listener())
-  }
-}
-
-function screenSaverActiveChanged (isActive) {
-  return new dbus.Message({
-    type: dbus.MessageType.SIGNAL,
-    path: '/org/gnome/ScreenSaver',
-    interface: 'org.gnome.ScreenSaver',
-    member: 'ActiveChanged',
-    signature: 'b',
-    body: [isActive]
-  })
 }
 
 describe('GnomeSession', () => {

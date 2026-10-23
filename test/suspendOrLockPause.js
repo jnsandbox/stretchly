@@ -9,36 +9,16 @@ import BreaksPlanner from '../app/breaksPlanner'
 import GnomeSession from '../app/utils/gnomeSession.js'
 import SuspendOrLockPause from '../app/utils/suspendOrLockPause.js'
 import defaultSettings from '../app/utils/defaultSettings'
+import { sessionBusDeliveringSignals, screenSaverActiveChanged } from './helpers/sessionBusFakes.js'
 
 vi.mock('@particle/dbus-next', async (importOriginal) => {
   const actualDbus = (await importOriginal()).default
   return { default: { ...actualDbus, sessionBus: vi.fn() } }
 })
 
-// main.js's pauseBreaks takes 1 for an indefinite pause, and false to write no break-log line.
-const indefinitePause = 1
-const withoutBreakLogLine = false
-const withoutNotification = false
-
-function sessionBusDeliveringSignals () {
-  const messageListeners = []
-  return {
-    on: vi.fn((eventName, listener) => { if (eventName === 'message') messageListeners.push(listener) }),
-    call: vi.fn(async () => {}),
-    deliver: (message) => messageListeners.forEach(listener => listener(message))
-  }
-}
-
-function screenSaverActiveChanged (isActive) {
-  return new dbus.Message({
-    type: dbus.MessageType.SIGNAL,
-    path: '/org/gnome/ScreenSaver',
-    interface: 'org.gnome.ScreenSaver',
-    member: 'ActiveChanged',
-    signature: 'b',
-    body: [isActive]
-  })
-}
+const indefinitePauseMilliseconds = 1
+const shouldWriteBreakLogLine = false
+const shouldNotify = false
 
 describe('SuspendOrLockPause', () => {
   let settingsFolder = null
@@ -75,11 +55,11 @@ describe('SuspendOrLockPause', () => {
 
   it('pauses breaks without a break-log line on GNOME\'s screen lock, and resumes them on unlock', () => {
     sessionBus.deliver(screenSaverActiveChanged(true))
-    expect(pauseBreaks.mock.calls).toEqual([[indefinitePause, withoutBreakLogLine]])
+    expect(pauseBreaks.mock.calls).toEqual([[indefinitePauseMilliseconds, shouldWriteBreakLogLine]])
     expect(breaksPlanner.isPaused).toBe(true)
 
     sessionBus.deliver(screenSaverActiveChanged(false))
-    expect(resumeBreaks.mock.calls).toEqual([[withoutNotification]])
+    expect(resumeBreaks.mock.calls).toEqual([[shouldNotify]])
     expect(breaksPlanner.isPaused).toBe(false)
   })
 
@@ -95,9 +75,30 @@ describe('SuspendOrLockPause', () => {
 
   it('pauses breaks without a break-log line for a suspend, and resumes them on resume', () => {
     powerMonitor.emit('suspend')
-    expect(pauseBreaks.mock.calls).toEqual([[indefinitePause, withoutBreakLogLine]])
+    expect(pauseBreaks.mock.calls).toEqual([[indefinitePauseMilliseconds, shouldWriteBreakLogLine]])
     powerMonitor.emit('resume')
-    expect(resumeBreaks.mock.calls).toEqual([[withoutNotification]])
+    expect(resumeBreaks.mock.calls).toEqual([[shouldNotify]])
     expect(breaksPlanner.isPaused).toBe(false)
+  })
+
+  it('resumes breaks when the watch comes back after GNOME\'s unlock was missed', async () => {
+    sessionBus.deliver(screenSaverActiveChanged(true))
+    dbus.sessionBus.mockReturnValue(sessionBusDeliveringSignals({ screenSaverActive: false }))
+    sessionBus.close()
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(resumeBreaks.mock.calls).toEqual([[shouldNotify]])
+    expect(breaksPlanner.isPaused).toBe(false)
+  })
+
+  it('brings a break due while timers were stalled forward on an unlock that ends no pause', async () => {
+    const breakNotifications = []
+    breaksPlanner.on('startMicrobreakNotification', () => breakNotifications.push('mini'))
+    breaksPlanner.on('startBreakNotification', () => breakNotifications.push('long'))
+    vi.setSystemTime(Date.now() + defaultSettings.microbreakInterval)
+    powerMonitor.emit('unlock-screen')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(breakNotifications).toHaveLength(1)
+    expect(pauseBreaks).not.toHaveBeenCalled()
+    expect(resumeBreaks).not.toHaveBeenCalled()
   })
 })

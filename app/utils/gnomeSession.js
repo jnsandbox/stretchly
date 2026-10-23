@@ -7,8 +7,13 @@ const replyTimeoutMilliseconds = 1000
 // Lock signals sent while the watch is down are lost, so it is set up again soon after.
 const screenLockRetryMilliseconds = 30000
 
-// No sender in the rule: the signal is taken from whichever process owns org.gnome.ScreenSaver.
-const screenLockMatchRule = "type='signal',interface='org.gnome.ScreenSaver',path='/org/gnome/ScreenSaver',member='ActiveChanged'"
+const screenSaverInterface = 'org.gnome.ScreenSaver'
+const screenSaverPath = '/org/gnome/ScreenSaver'
+const screenLockSignal = 'ActiveChanged'
+
+// No sender in the rule: gnome-shell sends the signal itself, while the name may belong to
+// an on-demand helper that is not running.
+const screenLockMatchRule = `type='signal',interface='${screenSaverInterface}',path='${screenSaverPath}',member='${screenLockSignal}'`
 
 // The session D-Bus connection, and GNOME's idle monitor and screen lock reached over it.
 // A reading answers null when GNOME does not, so callers keep their other sources.
@@ -22,7 +27,8 @@ class GnomeSession {
     this._screenLockRetryTimer = null
   }
 
-  // Calls onScreenLockChanged with true on GNOME's screen lock and false on unlock.
+  // Calls onScreenLockChanged with true on GNOME's screen lock and false on unlock, and with
+  // the current state each time the watch is set up, which corrects a change missed meanwhile.
   // Without a session bus or GNOME it never calls back, and keeps trying to set up the watch.
   async watchScreenLock (onScreenLockChanged) {
     this._onScreenLockChanged = onScreenLockChanged
@@ -40,7 +46,22 @@ class GnomeSession {
     } catch (error) {
       this._noteScreenLockWatched(false, error)
       this._retryScreenLockWatch()
+      return
     }
+    await this._reportCurrentScreenLock()
+  }
+
+  // A failed read reports nothing; the signals still arrive without it.
+  async _reportCurrentScreenLock () {
+    try {
+      const reply = await this._withinReplyTimeout(this._getOrCreateSessionBus().call(new dbus.Message({
+        destination: screenSaverInterface,
+        path: screenSaverPath,
+        interface: screenSaverInterface,
+        member: 'GetActive'
+      })))
+      this._onScreenLockChanged(reply.body[0])
+    } catch (error) {}
   }
 
   _retryScreenLockWatch () {
@@ -63,9 +84,9 @@ class GnomeSession {
 
   _reportScreenLockSignal (message) {
     if (message.type === dbus.MessageType.SIGNAL &&
-      message.interface === 'org.gnome.ScreenSaver' &&
-      message.path === '/org/gnome/ScreenSaver' &&
-      message.member === 'ActiveChanged') {
+      message.interface === screenSaverInterface &&
+      message.path === screenSaverPath &&
+      message.member === screenLockSignal) {
       this._onScreenLockChanged?.(message.body[0])
     }
   }
