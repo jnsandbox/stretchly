@@ -4,26 +4,45 @@ import dbus from '@particle/dbus-next'
 // A reply slower than this would hold up the natural breaks check behind it.
 const replyTimeoutMilliseconds = 1000
 
-// GNOME's own view of the session, read over the session D-Bus. Every reading
-// answers null when GNOME does not, so callers keep their other sources.
+// The session D-Bus connection and GNOME's idle monitor reached over it.
+// A reading answers null when GNOME does not, so callers keep their other sources.
 class GnomeSession {
   constructor () {
     this._sessionBus = null
-    this._failureLogged = false
+    this._idleMonitor = null
+    this._idleMonitorAnswering = null
   }
 
   async idleMilliseconds () {
     try {
+      // dbus-next never rejects requests left pending on a failed connection,
+      // so the lookup and the call both sit under the timeout.
+      const idleMilliseconds = await this._withinReplyTimeout(this._readIdleMonitor())
+      this._noteIdleMonitorAnswering(true)
+      return idleMilliseconds
+    } catch (error) {
+      this._idleMonitor = null
+      this._noteIdleMonitorAnswering(false, error)
+      return null
+    }
+  }
+
+  async _readIdleMonitor () {
+    if (!this._idleMonitor) {
       const idleMonitorObject = await this._getOrCreateSessionBus()
         .getProxyObject('org.gnome.Mutter.IdleMonitor', '/org/gnome/Mutter/IdleMonitor/Core')
-      const idleMonitor = idleMonitorObject.getInterface('org.gnome.Mutter.IdleMonitor')
-      return Number(await this._withinReplyTimeout(idleMonitor.GetIdletime()))
-    } catch (error) {
-      if (!this._failureLogged) {
-        log.info('Stretchly: GNOME idle monitor unavailable, using system idle time:', error.message)
-        this._failureLogged = true
-      }
-      return null
+      this._idleMonitor = idleMonitorObject.getInterface('org.gnome.Mutter.IdleMonitor')
+    }
+    return Number(await this._idleMonitor.GetIdletime())
+  }
+
+  _noteIdleMonitorAnswering (isAnswering, error) {
+    if (this._idleMonitorAnswering === isAnswering) return
+    this._idleMonitorAnswering = isAnswering
+    if (isAnswering) {
+      log.info('Stretchly: reading idle time from GNOME idle monitor')
+    } else {
+      log.info('Stretchly: GNOME idle monitor unavailable, using system idle time:', error.message)
     }
   }
 
@@ -31,8 +50,12 @@ class GnomeSession {
     if (!this._sessionBus) {
       const sessionBus = dbus.sessionBus()
       this._sessionBus = sessionBus
-      sessionBus.on('error', () => { this._sessionBus = null })
-      sessionBus.on('close', () => { this._sessionBus = null })
+      const dropSessionBus = () => {
+        this._sessionBus = null
+        this._idleMonitor = null
+      }
+      sessionBus.on('error', dropSessionBus)
+      sessionBus.on('close', dropSessionBus)
     }
     return this._sessionBus
   }

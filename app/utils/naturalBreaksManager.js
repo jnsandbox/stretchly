@@ -37,30 +37,32 @@ class NaturalBreaksManager extends EventEmitter {
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
-  get idleTime () {
-    if (this.usingNaturalBreaks) {
-      return (powerMonitor.getSystemIdleTime() || desktopIdle.getIdleTime()) * 1000
-    } else {
-      return 0
-    }
-  }
-
   // Under the X11 backend Electron only sees input sent to X11 windows, so GNOME's
   // own idle monitor is preferred whenever it answers.
   async readIdleTime () {
     if (!this.usingNaturalBreaks) return 0
     const gnomeIdleMilliseconds = this.gnomeSession ? await this.gnomeSession.idleMilliseconds() : null
-    return gnomeIdleMilliseconds ?? this.idleTime
+    return gnomeIdleMilliseconds ?? (powerMonitor.getSystemIdleTime() || desktopIdle.getIdleTime()) * 1000
   }
 
   _checkIdleTime () {
     let lastIdleTime = 0
     let isReadingIdleTime = false
+    let lastReadFailed = false
     const timer = setInterval(async () => {
       if (isReadingIdleTime) return
       isReadingIdleTime = true
-      const idleTime = await this.readIdleTime()
-      isReadingIdleTime = false
+      let idleTime
+      try {
+        idleTime = await this.readIdleTime()
+        lastReadFailed = false
+      } catch (error) {
+        if (!lastReadFailed) log.error('Stretchly: could not read idle time:', error)
+        lastReadFailed = true
+        return
+      } finally {
+        isReadingIdleTime = false
+      }
       // stop() may have run while the idle time was being read
       if (this.timer !== timer) return
       if (!this.isOnNaturalBreak && idleTime > 20000) {

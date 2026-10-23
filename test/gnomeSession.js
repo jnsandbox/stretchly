@@ -5,6 +5,10 @@ import GnomeSession from '../app/utils/gnomeSession.js'
 
 vi.mock('@particle/dbus-next', () => ({ default: { sessionBus: vi.fn() } }))
 
+function sessionBusWithStalledLookup () {
+  return { on: vi.fn(), getProxyObject: vi.fn(() => new Promise(() => {})) }
+}
+
 function sessionBusAnsweringGetIdletime (getIdletime) {
   return {
     on: vi.fn(),
@@ -49,6 +53,14 @@ describe('GnomeSession', () => {
   it('answers null when the idle monitor does not reply', async () => {
     vi.useFakeTimers()
     dbus.sessionBus.mockReturnValue(sessionBusAnsweringGetIdletime(() => new Promise(() => {})))
+    const idleMillisecondsPromise = new GnomeSession().idleMilliseconds()
+    await vi.advanceTimersByTimeAsync(5000)
+    ;((await idleMillisecondsPromise) === null).should.equal(true)
+  })
+
+  it('answers null when looking up the idle monitor does not complete', async () => {
+    vi.useFakeTimers()
+    dbus.sessionBus.mockReturnValue(sessionBusWithStalledLookup())
     const idleMillisecondsPromise = new GnomeSession().idleMilliseconds()
     await vi.advanceTimersByTimeAsync(5000)
     ;((await idleMillisecondsPromise) === null).should.equal(true)

@@ -56,12 +56,12 @@ describe('naturalBreaksManager', function () {
     naturalBreaksManager.usingNaturalBreaks.should.be.equal(true)
   })
 
-  it('should stop when stop()', () => {
+  it('should stop when stop()', async () => {
     naturalBreaksManager.stop()
     naturalBreaksManager.usingNaturalBreaks.should.be.equal(false)
     naturalBreaksManager.isSchedulerCleared.should.be.equal(false)
     naturalBreaksManager.isOnNaturalBreak.should.be.equal(false)
-    naturalBreaksManager.idleTime.should.be.equal(0)
+    ;(await naturalBreaksManager.readIdleTime()).should.be.equal(0)
   })
 
   it('does not create a second timer when start() is called twice', () => {
@@ -105,6 +105,14 @@ describe('naturalBreaksManager', function () {
       powerMonitor.getSystemIdleTime.mockReturnValue(longerThanResetTime / 1000)
       const manager = managerWithGnomeIdleTime(null)
       await vi.advanceTimersByTimeAsync(checkInterval)
+      manager.isSchedulerCleared.should.be.equal(true)
+    })
+
+    it('keeps checking after a check fails to read the idle time', async () => {
+      powerMonitor.getSystemIdleTime.mockImplementationOnce(() => { throw new Error('no idle time') })
+      powerMonitor.getSystemIdleTime.mockReturnValue(longerThanResetTime / 1000)
+      const manager = managerWithGnomeIdleTime(null)
+      await vi.advanceTimersByTimeAsync(2 * checkInterval)
       manager.isSchedulerCleared.should.be.equal(true)
     })
   })
