@@ -33,15 +33,14 @@ class GnomeSession {
   async watchScreenLock (onScreenLockChanged) {
     this._onScreenLockChanged = onScreenLockChanged
     try {
-      // dbus-next never rejects a call left pending on a failed connection.
-      await this._withinReplyTimeout(this._getOrCreateSessionBus().call(new dbus.Message({
+      await this._call({
         destination: 'org.freedesktop.DBus',
         path: '/org/freedesktop/DBus',
         interface: 'org.freedesktop.DBus',
         member: 'AddMatch',
         signature: 's',
         body: [screenLockMatchRule]
-      })))
+      })
       this._noteScreenLockWatched(true)
     } catch (error) {
       this._noteScreenLockWatched(false, error)
@@ -54,12 +53,12 @@ class GnomeSession {
   // A failed read reports nothing; the signals still arrive without it.
   async _reportCurrentScreenLock () {
     try {
-      const reply = await this._withinReplyTimeout(this._getOrCreateSessionBus().call(new dbus.Message({
+      const reply = await this._call({
         destination: screenSaverInterface,
         path: screenSaverPath,
         interface: screenSaverInterface,
         member: 'GetActive'
-      })))
+      })
       this._onScreenLockChanged(reply.body[0])
     } catch (error) {}
   }
@@ -93,9 +92,8 @@ class GnomeSession {
 
   async idleMilliseconds () {
     try {
-      // dbus-next never rejects requests left pending on a failed connection,
-      // so the lookup and the call both sit under the timeout.
-      const idleMilliseconds = await this._withinReplyTimeout(this._readIdleMonitor())
+      // The lookup and the call both sit under the timeout.
+      const idleMilliseconds = await this._withinReplyTimeout(sessionBus => this._readIdleMonitor(sessionBus))
       this._noteIdleMonitorAnswering(true)
       return idleMilliseconds
     } catch (error) {
@@ -105,9 +103,9 @@ class GnomeSession {
     }
   }
 
-  async _readIdleMonitor () {
+  async _readIdleMonitor (sessionBus) {
     if (!this._idleMonitor) {
-      const idleMonitorObject = await this._getOrCreateSessionBus()
+      const idleMonitorObject = await sessionBus
         .getProxyObject('org.gnome.Mutter.IdleMonitor', '/org/gnome/Mutter/IdleMonitor/Core')
       this._idleMonitor = idleMonitorObject.getInterface('org.gnome.Mutter.IdleMonitor')
     }
@@ -128,27 +126,44 @@ class GnomeSession {
     if (!this._sessionBus) {
       const sessionBus = dbus.sessionBus()
       this._sessionBus = sessionBus
-      const dropSessionBus = () => {
-        // A failing connection can send both error and close.
-        if (this._sessionBus !== sessionBus) return
-        this._sessionBus = null
-        this._idleMonitor = null
-        // The match rule went with the connection.
-        this._retryScreenLockWatch()
-      }
-      sessionBus.on('error', dropSessionBus)
-      sessionBus.on('close', dropSessionBus)
+      sessionBus.on('error', () => this._dropSessionBus(sessionBus))
+      sessionBus.on('close', () => this._dropSessionBus(sessionBus))
       sessionBus.on('message', message => this._reportScreenLockSignal(message))
     }
     return this._sessionBus
   }
 
-  _withinReplyTimeout (replyPromise) {
+  _dropSessionBus (sessionBus) {
+    // A failing connection can send both error and close, and a disconnect sends close.
+    if (this._sessionBus !== sessionBus) return
+    this._sessionBus = null
+    this._idleMonitor = null
+    // The match rule went with the connection.
+    this._retryScreenLockWatch()
+  }
+
+  _call (messageFields) {
+    return this._withinReplyTimeout(sessionBus => sessionBus.call(new dbus.Message(messageFields)))
+  }
+
+  // dbus-next never rejects a request left pending on a failed connection, so every
+  // request runs under this timeout. A connection that stops replying may never send
+  // error or close either, so it is dropped and the next request connects again.
+  async _withinReplyTimeout (request) {
+    const sessionBus = this._getOrCreateSessionBus()
     let timeout
     const timeoutPromise = new Promise((resolve, reject) => {
-      timeout = setTimeout(() => reject(new Error('no reply from GNOME')), replyTimeoutMilliseconds)
+      timeout = setTimeout(() => {
+        this._dropSessionBus(sessionBus)
+        sessionBus.disconnect()
+        reject(new Error('no reply from GNOME'))
+      }, replyTimeoutMilliseconds)
     })
-    return Promise.race([replyPromise, timeoutPromise]).finally(() => clearTimeout(timeout))
+    try {
+      return await Promise.race([request(sessionBus), timeoutPromise])
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 }
 

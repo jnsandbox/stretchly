@@ -1,4 +1,4 @@
-import { vi, describe, it, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest'
 import 'chai/register-should'
 import dbus from '@particle/dbus-next'
 import GnomeSession from '../app/utils/gnomeSession.js'
@@ -10,12 +10,13 @@ vi.mock('@particle/dbus-next', async (importOriginal) => {
 })
 
 function sessionBusWithStalledLookup () {
-  return { on: vi.fn(), getProxyObject: vi.fn(() => new Promise(() => {})) }
+  return { on: vi.fn(), disconnect: vi.fn(), getProxyObject: vi.fn(() => new Promise(() => {})) }
 }
 
 function sessionBusAnsweringGetIdletime (getIdletime) {
   return {
     on: vi.fn(),
+    disconnect: vi.fn(),
     getProxyObject: vi.fn(async (serviceName, objectPath) => ({
       getInterface: (interfaceName) => {
         if (serviceName === 'org.gnome.Mutter.IdleMonitor' &&
@@ -68,6 +69,20 @@ describe('GnomeSession', () => {
     const idleMillisecondsPromise = new GnomeSession().idleMilliseconds()
     await vi.advanceTimersByTimeAsync(5000)
     ;((await idleMillisecondsPromise) === null).should.equal(true)
+  })
+
+  it('connects again after a session bus that stopped replying', async () => {
+    vi.useFakeTimers()
+    const stalledSessionBus = sessionBusAnsweringGetIdletime(() => new Promise(() => {}))
+    dbus.sessionBus
+      .mockReturnValueOnce(stalledSessionBus)
+      .mockReturnValueOnce(sessionBusAnsweringGetIdletime(async () => 412345n))
+    const gnomeSession = new GnomeSession()
+    const stalledReading = gnomeSession.idleMilliseconds()
+    await vi.advanceTimersByTimeAsync(5000)
+    await stalledReading
+    expect(stalledSessionBus.disconnect).toHaveBeenCalledOnce()
+    ;(await gnomeSession.idleMilliseconds()).should.equal(412345)
   })
 
   describe('watching the screen lock', () => {
