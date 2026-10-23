@@ -1179,9 +1179,7 @@ function postponeBreak () {
 }
 
 function skipToMicrobreak (delay) {
-  if (microbreakWins || breakWins) {
-    breakLog.recordSkippedAhead()
-  }
+  breakLog.recordSkipAhead({ startedBreakType: 'mini' })
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1201,9 +1199,7 @@ function skipToMicrobreak (delay) {
 }
 
 function skipToBreak (delay) {
-  if (microbreakWins || breakWins) {
-    breakLog.recordSkippedAhead()
-  }
+  breakLog.recordSkipAhead({ startedBreakType: 'long' })
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)

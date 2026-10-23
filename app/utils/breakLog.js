@@ -67,8 +67,13 @@ export default class BreakLog {
     this._appendBreakEvent({ event: 'postponed', previous_postpones: previousPostpones })
   }
 
-  recordSkippedAhead () {
-    this._appendBreakEvent({ event: 'skipped_ahead' })
+  // startedBreakType is the break the skip starts, so a break the user starts can be
+  // told from one the schedule starts. A popup showing is the break the skip leaves.
+  recordSkipAhead ({ startedBreakType }) {
+    if (this.shownBreak) {
+      this._appendBreakEvent({ event: 'skipped_ahead' })
+    }
+    this._append({ event: 'started_early', break_type: startedBreakType })
   }
 
   recordStart () {
