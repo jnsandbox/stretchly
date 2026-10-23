@@ -70,6 +70,58 @@ describe('breaksPlanner', () => {
     expect(breaksPlanner.plannedBreakType).toBe(null)
   })
 
+  // Each start records whether a skip ahead brought it on, as the break log reports it.
+  function recordBreakStarts () {
+    const breakStarts = []
+    breaksPlanner.on('startMicrobreak', (start) => breakStarts.push(['mini', start?.startedEarly === true]))
+    breaksPlanner.on('startBreak', (start) => breakStarts.push(['long', start?.startedEarly === true]))
+    return breakStarts
+  }
+
+  it('starts a break skipped ahead to at once as started early', () => {
+    const breakStarts = recordBreakStarts()
+    breaksPlanner.skipToBreak()
+    vi.advanceTimersByTime(100)
+    expect(breakStarts).toEqual([['long', true]])
+  })
+
+  it('starts a break skipped ahead to with a wait as started early when the wait ends', () => {
+    const breakStarts = recordBreakStarts()
+    breaksPlanner.skipToMicrobreak(600000)
+    vi.advanceTimersByTime(599999)
+    expect(breakStarts).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(breakStarts).toEqual([['mini', true]])
+  })
+
+  it('starts a scheduled break as not started early', () => {
+    const breakStarts = recordBreakStarts()
+    breaksPlanner.settings.set('microbreakNotification', false)
+    breaksPlanner.nextBreak()
+    vi.advanceTimersByTime(breaksPlanner.settings.get('microbreakInterval'))
+    expect(breakStarts).toEqual([['mini', false]])
+  })
+
+  it('never starts a break skipped ahead to with a wait when a pause comes first', () => {
+    const breakStarts = recordBreakStarts()
+    breaksPlanner.settings.set('microbreakNotification', false)
+    breaksPlanner.skipToMicrobreak(600000)
+    breaksPlanner.pause(300000)
+    breaksPlanner.resume()
+    vi.advanceTimersByTime(breaksPlanner.settings.get('microbreakInterval'))
+    expect(breakStarts).toEqual([['mini', false]])
+  })
+
+  it('never starts a break skipped ahead to with a wait when a natural break comes first', () => {
+    const breakStarts = recordBreakStarts()
+    breaksPlanner.settings.set('microbreakNotification', false)
+    breaksPlanner.skipToBreak(600000)
+    breaksPlanner.naturalBreaksManager.emit('clearBreakScheduler')
+    breaksPlanner.naturalBreaksManager.emit('naturalBreakFinished', 300000)
+    vi.advanceTimersByTime(breaksPlanner.settings.get('microbreakInterval'))
+    expect(breakStarts).toEqual([['mini', false]])
+  })
+
   it('reports the break it cleared when idle clears the schedule, once per idle spell', () => {
     const clearedBreakTypes = []
     breaksPlanner.on('naturalBreakCleared', (breakType) => clearedBreakTypes.push(breakType))

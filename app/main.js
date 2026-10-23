@@ -370,7 +370,7 @@ async function initialize (isAppStart = true) {
     breakPlanner.nextBreak()
     breakPlanner.on('startMicrobreakNotification', () => { startMicrobreakNotification() })
     breakPlanner.on('startBreakNotification', () => { startBreakNotification() })
-    breakPlanner.on('startMicrobreak', () => { startMicrobreak() })
+    breakPlanner.on('startMicrobreak', (start) => { startMicrobreak(start) })
     breakPlanner.on('finishMicrobreak', (shouldPlaySound, shouldPlanNext) => {
       if (settings.get('miniBreakManualFinish')) {
         enterMiniBreakManualContinuation(shouldPlaySound)
@@ -381,7 +381,7 @@ async function initialize (isAppStart = true) {
       decreaseDanger(1)
       finishMicrobreak(shouldPlaySound, shouldPlanNext)
     })
-    breakPlanner.on('startBreak', () => { startBreak() })
+    breakPlanner.on('startBreak', (start) => { startBreak(start) })
     breakPlanner.on('finishBreak', (shouldPlaySound, shouldPlanNext) => {
       if (settings.get('longBreakManualFinish')) {
         enterLongBreakManualContinuation(shouldPlaySound)
@@ -745,7 +745,8 @@ function getBlurredBackgroundWindowOptions () {
   }
 }
 
-function startMicrobreak () {
+// startedEarly is set when a skip ahead brought this break on.
+function startMicrobreak ({ startedEarly = false } = {}) {
   // don't start another break if break running
   if (microbreakWins) {
     log.warn('Stretchly: Mini break already running, not starting Mini break')
@@ -762,7 +763,7 @@ function startMicrobreak () {
 
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
-  breakLog.noteBreakShown({ breakType: 'mini' })
+  breakLog.noteBreakShown({ breakType: 'mini', startedEarly })
 
   const idea = nextIdea || (settings.get('ideas') ? microbreakIdeas.randomElement : [''])
   nextIdea = null
@@ -917,7 +918,7 @@ function startMicrobreak () {
   }
 }
 
-function startBreak () {
+function startBreak ({ startedEarly = false } = {}) {
   if (breakWins) {
     log.warn('Stretchly: Long break already running, not starting Long break')
     return
@@ -933,7 +934,7 @@ function startBreak () {
 
   const modalPath = 'file://' + join(__dirname, '/break.html')
   breakWins = []
-  breakLog.noteBreakShown({ breakType: 'long' })
+  breakLog.noteBreakShown({ breakType: 'long', startedEarly })
 
   const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
   const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
@@ -1185,7 +1186,7 @@ function postponeBreak () {
 }
 
 function skipToMicrobreak (delay) {
-  breakLog.recordSkipAhead({ startedBreakType: 'mini' })
+  breakLog.recordSkippedAhead()
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1205,7 +1206,7 @@ function skipToMicrobreak (delay) {
 }
 
 function skipToBreak (delay) {
-  breakLog.recordSkipAhead({ startedBreakType: 'long' })
+  breakLog.recordSkippedAhead()
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)

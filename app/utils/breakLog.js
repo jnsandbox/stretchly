@@ -44,8 +44,13 @@ export default class BreakLog {
   }
 
   // breakType is 'mini' or 'long'. Break events and a quit read the popup shown last.
-  noteBreakShown ({ breakType }) {
+  // startedEarly marks a break a skip ahead brought on, as opposed to the schedule; it
+  // writes a line, so a skip whose break never starts leaves none.
+  noteBreakShown ({ breakType, startedEarly = false }) {
     this.shownBreak = { breakType, shownAt: Date.now() }
+    if (startedEarly) {
+      this._append({ event: 'started_early', break_type: breakType })
+    }
   }
 
   // Called on every close, whether or not the close wrote a line, so a later quit
@@ -67,13 +72,12 @@ export default class BreakLog {
     this._appendBreakEvent({ event: 'postponed', previous_postpones: previousPostpones })
   }
 
-  // startedBreakType is the break the skip starts, so a break the user starts can be
-  // told from one the schedule starts. A popup showing is the break the skip leaves.
-  recordSkipAhead ({ startedBreakType }) {
+  // Only a skip that ends a showing popup is a way out of a break; the break it brings
+  // on is written when that break shows.
+  recordSkippedAhead () {
     if (this.shownBreak) {
       this._appendBreakEvent({ event: 'skipped_ahead' })
     }
-    this._append({ event: 'started_early', break_type: startedBreakType })
   }
 
   recordStart () {

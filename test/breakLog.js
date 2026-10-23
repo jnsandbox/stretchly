@@ -119,20 +119,26 @@ describe('breakLog', () => {
     ])
   })
 
-  it('writes a skip ahead with no popup showing as the break it starts, started early', async () => {
-    new BreakLog(logFilePath).recordSkipAhead({ startedBreakType: 'long' })
-    expect(await readLogLinesWithoutTime()).toEqual([
-      { event: 'started_early', break_type: 'long' }
-    ])
+  it('writes nothing at a skip ahead with no popup showing', async () => {
+    const breakLog = new BreakLog(logFilePath)
+    breakLog.recordSkippedAhead()
+    breakLog.recordStart()
+    expect((await readLogLinesWithoutTime()).map(line => line.event)).toEqual(['start'])
   })
 
-  it('writes a skip ahead from a showing popup as that popup skipped ahead, then the break it starts', async () => {
+  it('writes a skip ahead from a showing popup as that popup skipped ahead, at once', async () => {
     const breakLog = new BreakLog(logFilePath)
     breakLog.noteBreakShown({ breakType: 'mini' })
     vi.advanceTimersByTime(8000)
-    breakLog.recordSkipAhead({ startedBreakType: 'long' })
+    breakLog.recordSkippedAhead()
     expect(await readLogLinesWithoutTime()).toEqual([
-      { event: 'skipped_ahead', break_type: 'mini', seconds_shown: 8 },
+      { event: 'skipped_ahead', break_type: 'mini', seconds_shown: 8 }
+    ])
+  })
+
+  it('writes a break a skip ahead brought on as started early when it shows', async () => {
+    new BreakLog(logFilePath).noteBreakShown({ breakType: 'long', startedEarly: true })
+    expect(await readLogLinesWithoutTime()).toEqual([
       { event: 'started_early', break_type: 'long' }
     ])
   })

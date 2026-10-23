@@ -201,7 +201,8 @@ class BreaksPlanner extends EventEmitter {
         this.breakNumber = 1
       }
     }
-    this.scheduler = new Scheduler(() => this.emit('startMicrobreak'), delay, 'startMicrobreak')
+    // The flag reaches only a start this skip brings on; a pause or clear cancels it with the scheduler.
+    this.scheduler = new Scheduler(() => this.emit('startMicrobreak', { startedEarly: true }), delay, 'startMicrobreak')
     this.scheduler.plan()
     this.emit('updateToolTip')
   }
@@ -215,7 +216,7 @@ class BreaksPlanner extends EventEmitter {
       const breakInterval = this.settings.get('breakInterval') + 1
       this.breakNumber = breakInterval
     }
-    this.scheduler = new Scheduler(() => this.emit('startBreak'), delay, 'startBreak')
+    this.scheduler = new Scheduler(() => this.emit('startBreak', { startedEarly: true }), delay, 'startBreak')
     this.scheduler.plan()
     this.emit('updateToolTip')
   }
