@@ -73,7 +73,7 @@ class SuspendOrLockPause {
       this.pausedForSuspendOrLock = false
       this.resumeBreaks(false)
     } else {
-      // correct the planner for the time spent in suspend
+      // correct the planner for the time spent in suspend or behind the lock screen
       this.breakPlanner.correctScheduler()
     }
     this.updateTray()
