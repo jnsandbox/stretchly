@@ -4,6 +4,10 @@ import dbus from '@particle/dbus-next'
 // A reply slower than this would hold up the natural breaks check behind it.
 const replyTimeoutMilliseconds = 1000
 
+// Reading the lock state may wait for D-Bus to start GNOME's on-demand helper, which is
+// slower than a reply, and holds up nothing.
+const lockStateTimeoutMilliseconds = 10000
+
 // Lock signals sent while the watch is down are lost, so it is set up again soon after.
 const screenLockRetryMilliseconds = 30000
 
@@ -50,7 +54,8 @@ class GnomeSession {
     await this._reportCurrentScreenLock()
   }
 
-  // A failed read reports nothing; the signals still arrive without it.
+  // A failed or slow read reports nothing; the signals still arrive without it, so a slow
+  // helper is no sign of a stalled connection.
   async _reportCurrentScreenLock () {
     try {
       const reply = await this._call({
@@ -58,7 +63,7 @@ class GnomeSession {
         path: screenSaverPath,
         interface: screenSaverInterface,
         member: 'GetActive'
-      })
+      }, { timeoutMilliseconds: lockStateTimeoutMilliseconds, dropsBusOnTimeout: false })
       this._onScreenLockChanged(reply.body[0])
     } catch (error) {}
   }
@@ -142,22 +147,25 @@ class GnomeSession {
     this._retryScreenLockWatch()
   }
 
-  _call (messageFields) {
-    return this._withinReplyTimeout(sessionBus => sessionBus.call(new dbus.Message(messageFields)))
+  _call (messageFields, timeoutOptions) {
+    return this._withinReplyTimeout(sessionBus => sessionBus.call(new dbus.Message(messageFields)), timeoutOptions)
   }
 
   // dbus-next never rejects a request left pending on a failed connection, so every
   // request runs under this timeout. A connection that stops replying may never send
-  // error or close either, so it is dropped and the next request connects again.
-  async _withinReplyTimeout (request) {
+  // error or close either, so unless told otherwise it is dropped and the next request
+  // connects again.
+  async _withinReplyTimeout (request, { timeoutMilliseconds = replyTimeoutMilliseconds, dropsBusOnTimeout = true } = {}) {
     const sessionBus = this._getOrCreateSessionBus()
     let timeout
     const timeoutPromise = new Promise((resolve, reject) => {
       timeout = setTimeout(() => {
-        this._dropSessionBus(sessionBus)
-        sessionBus.disconnect()
+        if (dropsBusOnTimeout) {
+          this._dropSessionBus(sessionBus)
+          sessionBus.disconnect()
+        }
         reject(new Error('no reply from GNOME'))
-      }, replyTimeoutMilliseconds)
+      }, timeoutMilliseconds)
     })
     try {
       return await Promise.race([request(sessionBus), timeoutPromise])

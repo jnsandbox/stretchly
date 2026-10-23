@@ -96,6 +96,21 @@ describe('GnomeSession', () => {
       reportedLockStates.should.deep.equal([true, false])
     })
 
+    it('keeps the subscription and the session bus when reading the lock state is slow', async () => {
+      vi.useFakeTimers()
+      const sessionBus = sessionBusDeliveringSignals()
+      sessionBus.call = vi.fn(async (message) => message.member === 'GetActive' ? new Promise(() => {}) : { body: [] })
+      sessionBus.disconnect = vi.fn()
+      dbus.sessionBus.mockReturnValue(sessionBus)
+      const reportedLockStates = []
+      new GnomeSession().watchScreenLock(isLocked => reportedLockStates.push(isLocked))
+      await vi.advanceTimersByTimeAsync(60000)
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      reportedLockStates.should.deep.equal([true])
+      expect(sessionBus.disconnect).not.toHaveBeenCalled()
+      expect(dbus.sessionBus).toHaveBeenCalledOnce()
+    })
+
     it('keeps reporting the screen lock after the session bus closes', async () => {
       vi.useFakeTimers()
       const firstSessionBus = sessionBusDeliveringSignals()
