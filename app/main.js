@@ -398,6 +398,12 @@ async function initialize (isAppStart = true) {
     breakPlanner.on('naturalBreakRestarted', (idleMilliseconds) => {
       breakLog.recordNaturalBreakRestarted({ idleMilliseconds })
     })
+    breakPlanner.on('doNotDisturbCleared', (clearedBreakType) => {
+      breakLog.recordDoNotDisturbCleared({ scheduledBreakType: clearedBreakType })
+    })
+    breakPlanner.on('doNotDisturbRestarted', () => {
+      breakLog.recordDoNotDisturbRestarted()
+    })
     breakPlanner.on('updateToolTip', function () {
       updateTray()
     })

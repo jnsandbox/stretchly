@@ -131,6 +131,15 @@ export default class BreakLog {
     this._append({ event: 'natural_break_restarted', idle_seconds: Math.round(idleMilliseconds / 1000) })
   }
 
+  // stretchly never clears for Do Not Disturb while a popup shows, so there is no shown break to report.
+  recordDoNotDisturbCleared ({ scheduledBreakType }) {
+    this._append({ event: 'do_not_disturb_cleared', break_type: scheduledBreakType })
+  }
+
+  recordDoNotDisturbRestarted () {
+    this._append({ event: 'do_not_disturb_restarted' })
+  }
+
   // A popup showing is the break acted on; otherwise it is the break scheduled next.
   _appendScheduleEvent (fields, scheduledBreakType) {
     if (this.shownBreak) {

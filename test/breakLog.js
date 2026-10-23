@@ -247,6 +247,20 @@ describe('breakLog', () => {
     ])
   })
 
+  it('writes Do Not Disturb clearing the schedule with the break it cleared', async () => {
+    new BreakLog(logFilePath).recordDoNotDisturbCleared({ scheduledBreakType: 'long' })
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'do_not_disturb_cleared', break_type: 'long' }
+    ])
+  })
+
+  it('writes Do Not Disturb switching off restarting the schedule', async () => {
+    new BreakLog(logFilePath).recordDoNotDisturbRestarted()
+    expect(await readLogLinesWithoutTime()).toEqual([
+      { event: 'do_not_disturb_restarted' }
+    ])
+  })
+
   it('stamps the UTC offset in force, which changes with daylight saving time', async () => {
     vi.setSystemTime(new Date('2026-01-20T07:15:02.042Z'))
     new BreakLog(logFilePath).recordStart()

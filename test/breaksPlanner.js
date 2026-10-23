@@ -86,4 +86,49 @@ describe('breaksPlanner', () => {
     breaksPlanner.naturalBreaksManager.emit('naturalBreakFinished', 412000)
     expect(restartIdleTimes).toEqual([412000])
   })
+
+  it('reports the break it cleared when Do Not Disturb clears the schedule', () => {
+    const clearedBreakTypes = []
+    breaksPlanner.on('doNotDisturbCleared', (breakType) => clearedBreakTypes.push(breakType))
+    breaksPlanner.dndManager.isOnDnd = true
+    breaksPlanner.dndManager.emit('dndStarted')
+    expect(clearedBreakTypes).toEqual(['mini'])
+  })
+
+  it('reports nothing when Do Not Disturb switches on while paused', () => {
+    const doNotDisturbEvents = []
+    breaksPlanner.on('doNotDisturbCleared', () => doNotDisturbEvents.push('cleared'))
+    breaksPlanner.on('doNotDisturbRestarted', () => doNotDisturbEvents.push('restarted'))
+    breaksPlanner.pause(1800000)
+    breaksPlanner.dndManager.isOnDnd = true
+    breaksPlanner.dndManager.emit('dndStarted')
+    expect(doNotDisturbEvents).toEqual([])
+  })
+
+  it('reports the restart when Do Not Disturb switching off restarts the schedule', () => {
+    let restartCount = 0
+    breaksPlanner.on('doNotDisturbRestarted', () => restartCount++)
+    breaksPlanner.dndManager.isOnDnd = true
+    breaksPlanner.dndManager.emit('dndStarted')
+    breaksPlanner.dndManager.isOnDnd = false
+    breaksPlanner.dndManager.emit('dndFinished')
+    expect(restartCount).toBe(1)
+    expect(breaksPlanner.plannedBreakType).toBe('mini')
+  })
+
+  // stretchly skips resuming while it believes Do Not Disturb is on, which would leave
+  // the pause unended in the break log.
+  it('ends a timed pause with Do Not Disturb marked off, though it was on before the pause', async () => {
+    breaksPlanner.settings.set('monitorDnd', true)
+    vi.spyOn(breaksPlanner.dndManager, '_doNotDisturb').mockResolvedValue(true)
+    breaksPlanner.doNotDisturb(true)
+    await vi.advanceTimersByTimeAsync(breaksPlanner.settings.get('monitorDndCheckInterval'))
+    expect(breaksPlanner.dndManager.isOnDnd).toBe(true)
+    const doNotDisturbStatesAtResume = []
+    breaksPlanner.on('resumeBreaks', () => doNotDisturbStatesAtResume.push(breaksPlanner.dndManager.isOnDnd))
+    breaksPlanner.pause(1800000)
+    await vi.advanceTimersByTimeAsync(1800000)
+    expect(doNotDisturbStatesAtResume).toEqual([false])
+    breaksPlanner.dndManager.stop()
+  })
 })
