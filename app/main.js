@@ -31,6 +31,7 @@ import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
+import SuspendOrLockPause from './utils/suspendOrLockPause.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -86,7 +87,7 @@ let contributorPreferencesWin = null
 let syncPreferencesWin = null
 let myStretchlyWin = null
 let settings
-let pausedForSuspendOrLock = false
+let suspendOrLockPause = null
 let nextIdea = null
 let danger = 0
 let updateChecker
@@ -514,44 +515,9 @@ i18next.on('languageChanged', () => {
   loadIdeas()
 })
 
-function onSuspendOrLock () {
-  log.info('System: suspend or lock')
-  if (settings.get('pauseForSuspendOrLock')) {
-    if (breakPlanner.isPaused || breakPlanner.dndManager.isOnDnd ||
-      breakPlanner.naturalBreaksManager.isSchedulerCleared ||
-      breakPlanner.appExclusionsManager.isSchedulerCleared) {
-      log.info('Stretchly: not pausing for suspendOrLock because paused already')
-    } else {
-      pausedForSuspendOrLock = true
-      pauseBreaks(1, false)
-      updateTray()
-    }
-  } else {
-    log.info('Stretchly: not pausing for suspendOrLock because setting is disabled')
-  }
-}
-
-function onResumeOrUnlock () {
-  log.info('System: resume or unlock')
-  if (pausedForSuspendOrLock) {
-    pausedForSuspendOrLock = false
-    resumeBreaks(false)
-  } else {
-    // correct the planner for the time spent in suspend
-    breakPlanner.correctScheduler()
-  }
-  updateTray()
-}
-
 function startPowerMonitoring () {
-  powerMonitor.removeListener('suspend', onSuspendOrLock)
-  powerMonitor.removeListener('lock-screen', onSuspendOrLock)
-  powerMonitor.removeListener('resume', onResumeOrUnlock)
-  powerMonitor.removeListener('unlock-screen', onResumeOrUnlock)
-  powerMonitor.on('suspend', onSuspendOrLock)
-  powerMonitor.on('lock-screen', onSuspendOrLock)
-  powerMonitor.on('resume', onResumeOrUnlock)
-  powerMonitor.on('unlock-screen', onResumeOrUnlock)
+  suspendOrLockPause ??= new SuspendOrLockPause({ settings, breakPlanner, pauseBreaks, resumeBreaks, updateTray })
+  suspendOrLockPause.listen(powerMonitor, breakPlanner.gnomeSession)
 }
 
 function closeWindows (windowArray) {

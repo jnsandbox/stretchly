@@ -4,13 +4,70 @@ import dbus from '@particle/dbus-next'
 // A reply slower than this would hold up the natural breaks check behind it.
 const replyTimeoutMilliseconds = 1000
 
-// The session D-Bus connection and GNOME's idle monitor reached over it.
+// Lock signals sent while the watch is down are lost, so it is set up again soon after.
+const screenLockRetryMilliseconds = 30000
+
+// No sender in the rule: the signal is taken from whichever process owns org.gnome.ScreenSaver.
+const screenLockMatchRule = "type='signal',interface='org.gnome.ScreenSaver',path='/org/gnome/ScreenSaver',member='ActiveChanged'"
+
+// The session D-Bus connection, and GNOME's idle monitor and screen lock reached over it.
 // A reading answers null when GNOME does not, so callers keep their other sources.
 class GnomeSession {
   constructor () {
     this._sessionBus = null
     this._idleMonitor = null
     this._idleMonitorAnswering = null
+    this._onScreenLockChanged = null
+    this._screenLockWatched = null
+    this._screenLockRetryTimer = null
+  }
+
+  // Calls onScreenLockChanged with true on GNOME's screen lock and false on unlock.
+  // Without a session bus or GNOME it never calls back, and keeps trying to set up the watch.
+  async watchScreenLock (onScreenLockChanged) {
+    this._onScreenLockChanged = onScreenLockChanged
+    try {
+      // dbus-next never rejects a call left pending on a failed connection.
+      await this._withinReplyTimeout(this._getOrCreateSessionBus().call(new dbus.Message({
+        destination: 'org.freedesktop.DBus',
+        path: '/org/freedesktop/DBus',
+        interface: 'org.freedesktop.DBus',
+        member: 'AddMatch',
+        signature: 's',
+        body: [screenLockMatchRule]
+      })))
+      this._noteScreenLockWatched(true)
+    } catch (error) {
+      this._noteScreenLockWatched(false, error)
+      this._retryScreenLockWatch()
+    }
+  }
+
+  _retryScreenLockWatch () {
+    if (!this._onScreenLockChanged || this._screenLockRetryTimer) return
+    this._screenLockRetryTimer = setTimeout(() => {
+      this._screenLockRetryTimer = null
+      this.watchScreenLock(this._onScreenLockChanged)
+    }, screenLockRetryMilliseconds)
+  }
+
+  _noteScreenLockWatched (isWatched, error) {
+    if (this._screenLockWatched === isWatched) return
+    this._screenLockWatched = isWatched
+    if (isWatched) {
+      log.info('Stretchly: listening for GNOME screen lock')
+    } else {
+      log.info('Stretchly: cannot listen for GNOME screen lock, retrying:', error.message)
+    }
+  }
+
+  _reportScreenLockSignal (message) {
+    if (message.type === dbus.MessageType.SIGNAL &&
+      message.interface === 'org.gnome.ScreenSaver' &&
+      message.path === '/org/gnome/ScreenSaver' &&
+      message.member === 'ActiveChanged') {
+      this._onScreenLockChanged?.(message.body[0])
+    }
   }
 
   async idleMilliseconds () {
@@ -51,11 +108,16 @@ class GnomeSession {
       const sessionBus = dbus.sessionBus()
       this._sessionBus = sessionBus
       const dropSessionBus = () => {
+        // A failing connection can send both error and close.
+        if (this._sessionBus !== sessionBus) return
         this._sessionBus = null
         this._idleMonitor = null
+        // The match rule went with the connection.
+        this._retryScreenLockWatch()
       }
       sessionBus.on('error', dropSessionBus)
       sessionBus.on('close', dropSessionBus)
+      sessionBus.on('message', message => this._reportScreenLockSignal(message))
     }
     return this._sessionBus
   }

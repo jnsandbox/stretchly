@@ -3,7 +3,10 @@ import 'chai/register-should'
 import dbus from '@particle/dbus-next'
 import GnomeSession from '../app/utils/gnomeSession.js'
 
-vi.mock('@particle/dbus-next', () => ({ default: { sessionBus: vi.fn() } }))
+vi.mock('@particle/dbus-next', async (importOriginal) => {
+  const actualDbus = (await importOriginal()).default
+  return { default: { ...actualDbus, sessionBus: vi.fn() } }
+})
 
 function sessionBusWithStalledLookup () {
   return { on: vi.fn(), getProxyObject: vi.fn(() => new Promise(() => {})) }
@@ -23,6 +26,28 @@ function sessionBusAnsweringGetIdletime (getIdletime) {
       }
     }))
   }
+}
+
+// A session bus that accepts match rules and lets the test deliver messages on it.
+function sessionBusDeliveringSignals () {
+  const listeners = { message: [], error: [], close: [] }
+  return {
+    on: vi.fn((eventName, listener) => { listeners[eventName].push(listener) }),
+    call: vi.fn(async () => {}),
+    deliver: (message) => listeners.message.forEach(listener => listener(message)),
+    close: () => listeners.close.forEach(listener => listener())
+  }
+}
+
+function screenSaverActiveChanged (isActive) {
+  return new dbus.Message({
+    type: dbus.MessageType.SIGNAL,
+    path: '/org/gnome/ScreenSaver',
+    interface: 'org.gnome.ScreenSaver',
+    member: 'ActiveChanged',
+    signature: 'b',
+    body: [isActive]
+  })
 }
 
 describe('GnomeSession', () => {
@@ -64,5 +89,43 @@ describe('GnomeSession', () => {
     const idleMillisecondsPromise = new GnomeSession().idleMilliseconds()
     await vi.advanceTimersByTimeAsync(5000)
     ;((await idleMillisecondsPromise) === null).should.equal(true)
+  })
+
+  describe('watching the screen lock', () => {
+    it('reports GNOME\'s screen lock and unlock', async () => {
+      const sessionBus = sessionBusDeliveringSignals()
+      dbus.sessionBus.mockReturnValue(sessionBus)
+      const reportedLockStates = []
+      await new GnomeSession().watchScreenLock(isLocked => reportedLockStates.push(isLocked))
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      reportedLockStates.should.deep.equal([true, false])
+    })
+
+    it('keeps reporting the screen lock after the session bus closes', async () => {
+      vi.useFakeTimers()
+      const firstSessionBus = sessionBusDeliveringSignals()
+      const reconnectedSessionBus = sessionBusDeliveringSignals()
+      dbus.sessionBus.mockReturnValueOnce(firstSessionBus).mockReturnValueOnce(reconnectedSessionBus)
+      const reportedLockStates = []
+      await new GnomeSession().watchScreenLock(isLocked => reportedLockStates.push(isLocked))
+      firstSessionBus.close()
+      await vi.advanceTimersByTimeAsync(60000)
+      reconnectedSessionBus.deliver(screenSaverActiveChanged(true))
+      reportedLockStates.should.deep.equal([true])
+    })
+
+    it('starts reporting the screen lock once a session bus that was missing appears', async () => {
+      vi.useFakeTimers()
+      const sessionBus = sessionBusDeliveringSignals()
+      dbus.sessionBus
+        .mockImplementationOnce(() => { throw new Error('Could not get session bus address') })
+        .mockReturnValueOnce(sessionBus)
+      const reportedLockStates = []
+      await new GnomeSession().watchScreenLock(isLocked => reportedLockStates.push(isLocked))
+      await vi.advanceTimersByTimeAsync(60000)
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      reportedLockStates.should.deep.equal([true])
+    })
   })
 })
