@@ -4,9 +4,10 @@ import { desktopIdle } from 'node-desktop-idle-v2'
 import { powerMonitor } from 'electron'
 
 class NaturalBreaksManager extends EventEmitter {
-  constructor (settings) {
+  constructor (settings, gnomeSession = null) {
     super()
     this.settings = settings
+    this.gnomeSession = gnomeSession
     this.usingNaturalBreaks = settings.get('naturalBreaks')
     this.naturalBreaksCheckInterval = settings.get('naturalBreaksCheckInterval')
     this.timer = null
@@ -44,10 +45,24 @@ class NaturalBreaksManager extends EventEmitter {
     }
   }
 
+  // Under the X11 backend Electron only sees input sent to X11 windows, so GNOME's
+  // own idle monitor is preferred whenever it answers.
+  async readIdleTime () {
+    if (!this.usingNaturalBreaks) return 0
+    const gnomeIdleMilliseconds = this.gnomeSession ? await this.gnomeSession.idleMilliseconds() : null
+    return gnomeIdleMilliseconds ?? this.idleTime
+  }
+
   _checkIdleTime () {
     let lastIdleTime = 0
-    this.timer = setInterval(() => {
-      const idleTime = this.idleTime
+    let isReadingIdleTime = false
+    const timer = setInterval(async () => {
+      if (isReadingIdleTime) return
+      isReadingIdleTime = true
+      const idleTime = await this.readIdleTime()
+      isReadingIdleTime = false
+      // stop() may have run while the idle time was being read
+      if (this.timer !== timer) return
       if (!this.isOnNaturalBreak && idleTime > 20000) {
         this.isOnNaturalBreak = true
       }
@@ -64,6 +79,7 @@ class NaturalBreaksManager extends EventEmitter {
       }
       lastIdleTime = idleTime
     }, this.naturalBreaksCheckInterval)
+    this.timer = timer
   }
 }
 

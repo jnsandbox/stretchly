@@ -1,9 +1,13 @@
+import { vi } from 'vitest'
 import 'chai/register-should'
+import { powerMonitor } from 'electron'
 import { join } from 'path'
 import NaturalBreaksManager from '../app/utils/naturalBreaksManager'
 import Store from 'electron-store'
 import defaultSettings from '../app/utils/defaultSettings'
 import { rm } from 'node:fs/promises'
+
+vi.mock('electron', () => ({ powerMonitor: { getSystemIdleTime: vi.fn(() => 0) } }))
 
 describe('naturalBreaksManager', function () {
   let settings = null
@@ -66,6 +70,43 @@ describe('naturalBreaksManager', function () {
     const timer = naturalBreaksManager.timer
     naturalBreaksManager.start()
     naturalBreaksManager.timer.should.be.equal(timer)
+  })
+
+  describe('idle time source', () => {
+    const checkInterval = defaultSettings.naturalBreaksCheckInterval
+    const longerThanResetTime = defaultSettings.naturalBreaksInactivityResetTime + 60000
+
+    function managerWithGnomeIdleTime (gnomeIdleMilliseconds) {
+      naturalBreaksManager.stop()
+      naturalBreaksManager = new NaturalBreaksManager(settings, {
+        idleMilliseconds: async () => gnomeIdleMilliseconds
+      })
+      return naturalBreaksManager
+    }
+
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('clears the schedule when GNOME reports the user away, whatever Electron reports', async () => {
+      powerMonitor.getSystemIdleTime.mockReturnValue(0)
+      const manager = managerWithGnomeIdleTime(longerThanResetTime)
+      await vi.advanceTimersByTimeAsync(checkInterval)
+      manager.isSchedulerCleared.should.be.equal(true)
+    })
+
+    it('keeps the schedule when GNOME reports the user active, whatever Electron reports', async () => {
+      powerMonitor.getSystemIdleTime.mockReturnValue(longerThanResetTime / 1000)
+      const manager = managerWithGnomeIdleTime(1000)
+      await vi.advanceTimersByTimeAsync(checkInterval)
+      manager.isSchedulerCleared.should.be.equal(false)
+    })
+
+    it('falls back to Electron\'s idle time when GNOME does not answer', async () => {
+      powerMonitor.getSystemIdleTime.mockReturnValue(longerThanResetTime / 1000)
+      const manager = managerWithGnomeIdleTime(null)
+      await vi.advanceTimersByTimeAsync(checkInterval)
+      manager.isSchedulerCleared.should.be.equal(true)
+    })
   })
 
   afterEach(async () => {

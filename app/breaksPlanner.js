@@ -3,6 +3,7 @@ import EventEmitter from 'events'
 import NaturalBreaksManager from './utils/naturalBreaksManager.js'
 import DndManager from './utils/dndManager.js'
 import AppExclusionsManager from './utils/appExclusionsManager.js'
+import GnomeSession from './utils/gnomeSession.js'
 import log from 'electron-log/main.js'
 
 class BreaksPlanner extends EventEmitter {
@@ -17,7 +18,8 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler = null
     this.isPaused = false
     this.pollersSuspended = false
-    this.naturalBreaksManager = new NaturalBreaksManager(settings)
+    this.gnomeSession = new GnomeSession()
+    this.naturalBreaksManager = new NaturalBreaksManager(settings, this.gnomeSession)
     this.dndManager = new DndManager(settings)
     this.appExclusionsManager = new AppExclusionsManager(settings)
 
