@@ -222,23 +222,6 @@ describe('breakLog', () => {
     expect((await readLogLinesWithoutTime()).at(-1)).toEqual({ event: 'resumed', paused_minutes: 20 })
   })
 
-  it('writes a reset with the scheduled break type', async () => {
-    new BreakLog(logFilePath).recordReset({ scheduledBreakType: 'mini' })
-    expect(await readLogLinesWithoutTime()).toEqual([
-      { event: 'reset', break_type: 'mini' }
-    ])
-  })
-
-  it('writes a reset during a break with the shown break type and the seconds it was shown', async () => {
-    const breakLog = new BreakLog(logFilePath)
-    breakLog.noteBreakShown({ breakType: 'mini' })
-    vi.advanceTimersByTime(2500)
-    breakLog.recordReset({ scheduledBreakType: 'mini' })
-    expect(await readLogLinesWithoutTime()).toEqual([
-      { event: 'reset', break_type: 'mini', seconds_shown: 2.5 }
-    ])
-  })
-
   it('writes a natural break clearing the schedule with the break it cleared', async () => {
     new BreakLog(logFilePath).recordNaturalBreakCleared({ scheduledBreakType: 'long' })
     expect(await readLogLinesWithoutTime()).toEqual([

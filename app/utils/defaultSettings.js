@@ -76,7 +76,6 @@ export default {
   skipToNextScheduledBreakShortcut: '',
   skipToNextMiniBreakShortcut: '',
   skipToNextLongBreakShortcut: '',
-  resetBreaksShortcut: '',
   showTrayMenuInStrictMode: false,
   customPreferencesMessage: '',
   disableAppUpdateFeatures: insideFlatpak() || insideWindowsStore() || insideSnap() || insideWindowsPortable(),

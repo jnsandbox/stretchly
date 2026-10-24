@@ -44,9 +44,6 @@ const allCommands = {
   logs: {
     description: 'Show location of logs file'
   },
-  reset: {
-    description: 'Reset breaks'
-  },
   pause: {
     description: 'Pause breaks',
     options: [allOptions.duration]

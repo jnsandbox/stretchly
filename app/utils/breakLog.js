@@ -114,7 +114,7 @@ export default class BreakLog {
     }, scheduledBreakType)
   }
 
-  // Writes nothing unless a logged pause is open, so a reset while not paused ends silently.
+  // Writes nothing unless a logged pause is open.
   recordResumed () {
     if (this.pausedAt === null) return
     this._append({ event: 'resumed', paused_minutes: minutesToOneDecimal(Date.now() - this.pausedAt) })
@@ -126,10 +126,6 @@ export default class BreakLog {
     this._appendScheduleEvent({
       event: 'away_break', away_seconds: Math.round(awayMilliseconds / 1000), cause
     }, scheduledBreakType)
-  }
-
-  recordReset ({ scheduledBreakType }) {
-    this._appendScheduleEvent({ event: 'reset' }, scheduledBreakType)
   }
 
   // stretchly never clears for idle while a popup shows, so there is no shown break to report.

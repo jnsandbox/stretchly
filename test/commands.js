@@ -44,6 +44,11 @@ describe('commands', () => {
     cmd.hasSupportedCommand.should.be.equal(false)
   })
 
+  it('does not support reset, so breaks cannot be reset from the command line', () => {
+    const cmd = new Command(['reset'], '1.2.3')
+    cmd.hasSupportedCommand.should.be.equal(false)
+  })
+
   it('hasSupportedCommand is true with an invalid command', () => {
     const cmd = new Command(['mini'], '1.2.3')
     cmd.hasSupportedCommand.should.be.equal(true)

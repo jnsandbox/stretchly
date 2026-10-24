@@ -11,8 +11,7 @@ const shortcuts = {
   pauseBreaksToggleShortcut: 1, // 1 means pause indefinitely
   skipToNextScheduledBreakShortcut: null,
   skipToNextMiniBreakShortcut: null,
-  skipToNextLongBreakShortcut: null,
-  resetBreaksShortcut: null
+  skipToNextLongBreakShortcut: null
 }
 
 function calculateInterval (name, settings) {
@@ -49,10 +48,6 @@ function onShortcut ({ name, settings, log, breakPlanner, functions }) {
     case 'skipToNextLongBreakShortcut':
       log.info('Stretchly: skipping to next Long break by shortcut')
       functions.skipToBreak()
-      break
-    case 'resetBreaksShortcut':
-      log.info('Stretchly: resetting breaks by shortcut')
-      functions.resetBreaks()
       break
     default: {
       log.info(`Stretchly: pausing breaks by shortcut (${name})`)

@@ -149,11 +149,6 @@ if (!gotTheLock) {
     }
 
     switch (cmd.command) {
-      case 'reset':
-        log.info('Stretchly: resetting breaks (requested by second instance)')
-        resetBreaks()
-        break
-
       case 'mini': {
         log.info('Stretchly: skip to Mini break (requested by second instance)')
         const delay = cmd.waitToMs()
@@ -486,7 +481,7 @@ async function initialize (isAppStart = true) {
     log,
     globalShortcut,
     breakPlanner,
-    functions: { pauseBreaks, resumeBreaks, skipToBreak, skipToMicrobreak, resetBreaks }
+    functions: { pauseBreaks, resumeBreaks, skipToBreak, skipToMicrobreak }
   })
 
   updateTray()
@@ -1241,18 +1236,6 @@ function skipToBreak (delay) {
   updateTray()
 }
 
-function resetBreaks () {
-  breakLog.recordReset({ scheduledBreakType: breakPlanner.plannedBreakType })
-  closeBreakPopup()
-  danger = 0
-  log.info(`Stretchly: danger reset to ${danger}`)
-  breakPlanner.reset()
-  // A reset while paused also ends the pause.
-  breakLog.recordResumed()
-  log.info('Stretchly: resetting breaks')
-  updateTray()
-}
-
 function calculateBackgroundColor (color) {
   let opacityMultiplier = 1
   if (settings.get('transparentMode')) {
@@ -1513,9 +1496,6 @@ function getTrayMenuTemplate () {
           }
         }
       ]
-    }, {
-      label: i18next.t('main.resetBreaks'),
-      click: resetBreaks
     })
   }
 
