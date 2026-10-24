@@ -522,14 +522,25 @@ i18next.on('languageChanged', () => {
 })
 
 function startPowerMonitoring () {
-  awayBreaks ??= new AwayBreaks({ settings, breakPlanner, breakLog, closeBreakPopup, updateTray })
+  awayBreaks ??= new AwayBreaks({
+    settings,
+    breakPlanner,
+    breakLog,
+    closeBreakPopup,
+    readIdleMilliseconds: () => breakPlanner.naturalBreaksManager.readSystemIdleTime(),
+    updateTray
+  })
   awayBreaks.listen(powerMonitor, breakPlanner.gnomeSession)
 }
 
 // Closes a showing popup without counting it as taken, postponed or skipped.
 function closeBreakPopup () {
-  if (microbreakWins) microbreakWins = breakComplete(false, microbreakWins, 'mini')
-  if (breakWins) breakWins = breakComplete(false, breakWins, 'long')
+  if (microbreakWins) {
+    microbreakWins = breakComplete(false, microbreakWins)
+  }
+  if (breakWins) {
+    breakWins = breakComplete(false, breakWins)
+  }
 }
 
 function closeWindows (windowArray) {
@@ -1233,12 +1244,7 @@ function skipToBreak (delay) {
 
 function resetBreaks () {
   breakLog.recordReset({ scheduledBreakType: breakPlanner.plannedBreakType })
-  if (microbreakWins) {
-    microbreakWins = breakComplete(false, microbreakWins)
-  }
-  if (breakWins) {
-    breakWins = breakComplete(false, breakWins)
-  }
+  closeBreakPopup()
   danger = 0
   log.info(`Stretchly: danger reset to ${danger}`)
   breakPlanner.reset()

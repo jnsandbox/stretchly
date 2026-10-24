@@ -16,6 +16,12 @@ class Scheduler {
     this.timer = setTimeout(this.func, this.delay)
   }
 
+  // Stops the timer while timeLeft keeps counting down; correct() starts it again.
+  hold () {
+    if (this.timer === null) return
+    clearTimeout(this.timer)
+  }
+
   correct () {
     if (this.timer === null) return
     clearTimeout(this.timer)

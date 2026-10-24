@@ -13,6 +13,7 @@ class NaturalBreaksManager extends EventEmitter {
     this.timer = null
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
+    this.countsIdleFrom = null
     if (this.usingNaturalBreaks) {
       this.start()
     }
@@ -37,10 +38,21 @@ class NaturalBreaksManager extends EventEmitter {
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
+  // Idle time from before this wall-clock time is not counted. An idle counter may run on
+  // through a suspend, and the time away has already been dealt with.
+  countIdleFrom (timestamp) {
+    this.countsIdleFrom = timestamp
+  }
+
   // Under the X11 backend Electron only sees input sent to X11 windows, so GNOME's
   // own idle monitor is preferred whenever it answers.
   async readIdleTime () {
     if (!this.usingNaturalBreaks) return 0
+    return this.readSystemIdleTime()
+  }
+
+  // Answers whether or not natural breaks are on.
+  async readSystemIdleTime () {
     const gnomeIdleMilliseconds = this.gnomeSession ? await this.gnomeSession.idleMilliseconds() : null
     return gnomeIdleMilliseconds ?? (powerMonitor.getSystemIdleTime() || desktopIdle.getIdleTime()) * 1000
   }
@@ -65,6 +77,7 @@ class NaturalBreaksManager extends EventEmitter {
       }
       // stop() may have run while the idle time was being read
       if (this.timer !== timer) return
+      if (this.countsIdleFrom !== null) idleTime = Math.min(idleTime, Date.now() - this.countsIdleFrom)
       if (!this.isOnNaturalBreak && idleTime > 20000) {
         this.isOnNaturalBreak = true
       }

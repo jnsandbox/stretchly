@@ -31,6 +31,8 @@ describe('AwayBreaks', () => {
   let powerMonitor = null
   let closeBreakPopup = null
   let breakLog = null
+  // Idle time as GNOME or Electron would read it; a test moves it to stand for input.
+  let lastInputAt = null
 
   function breakLogLines () {
     if (!existsSync(breakLogPath)) return []
@@ -55,8 +57,14 @@ describe('AwayBreaks', () => {
     breakLog = new BreakLog(breakLogPath)
     // Stands in for the main process, which tells the break log when a popup closes.
     closeBreakPopup = vi.fn(() => breakLog.noteBreakClosed())
+    lastInputAt = Date.now()
     const awayBreaks = new AwayBreaks({
-      settings, breakPlanner: breaksPlanner, breakLog, closeBreakPopup, updateTray: () => {}
+      settings,
+      breakPlanner: breaksPlanner,
+      breakLog,
+      closeBreakPopup,
+      readIdleMilliseconds: async () => Date.now() - lastInputAt,
+      updateTray: () => {}
     })
     awayBreaks.listen(powerMonitor, new GnomeSession())
   })
@@ -155,11 +163,9 @@ describe('AwayBreaks', () => {
 
   describe('with natural breaks on', () => {
     const checkInterval = defaultSettings.naturalBreaksCheckInterval
-    let lastInputAt = null
     let naturalBreakRestarts = 0
 
     beforeEach(() => {
-      lastInputAt = Date.now()
       naturalBreakRestarts = 0
       breaksPlanner.on('naturalBreakRestarted', () => { naturalBreakRestarts += 1 })
       breaksPlanner.naturalBreaksManager.readIdleTime = async () => Date.now() - lastInputAt
@@ -177,6 +183,19 @@ describe('AwayBreaks', () => {
       expect(naturalBreakRestarts).toBe(1)
       expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval)
       expect(breakLogLines()).toEqual([])
+    })
+
+    it('counts no idle time from before the wake that ends a long suspend', async () => {
+      let naturalBreakClears = 0
+      breaksPlanner.on('naturalBreakCleared', () => { naturalBreakClears += 1 })
+      powerMonitor.emit('suspend')
+      // The idle reading here counts the time asleep, as it might on the host.
+      vi.setSystemTime(Date.now() + resetTime + oneMinute)
+      powerMonitor.emit('resume')
+      await vi.advanceTimersByTimeAsync(3 * checkInterval)
+      expect(naturalBreakClears).toBe(0)
+      expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval - 3 * checkInterval)
+      expect(breakLogLines()).toMatchObject([{ event: 'away_break', cause: 'suspend' }])
     })
 
     it('restarts once when the natural break ends before the unlock arrives', async () => {
@@ -219,5 +238,78 @@ describe('AwayBreaks', () => {
     powerMonitor.emit('unlock-screen')
     await vi.advanceTimersByTimeAsync(1)
     expect(breakNotifications).toHaveLength(1)
+  })
+
+  describe('with a break coming due while away', () => {
+    const notificationInterval = defaultSettings.microbreakNotificationInterval
+    let breakNotifications = null
+    let finishedMicrobreaks = 0
+
+    beforeEach(async () => {
+      breakNotifications = []
+      finishedMicrobreaks = 0
+      breaksPlanner.on('startMicrobreakNotification', () => breakNotifications.push('mini'))
+      breaksPlanner.on('finishMicrobreak', () => { finishedMicrobreaks += 1 })
+      await vi.advanceTimersByTimeAsync(microbreakInterval - notificationInterval - oneMinute)
+    })
+
+    it('shows the break after the unlock that ends a short lock', async () => {
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(2 * oneMinute)
+      expect(breakNotifications).toEqual([])
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      await vi.advanceTimersByTimeAsync(1)
+      expect(breakNotifications).toEqual(['mini'])
+    })
+
+    it('drops the break with the restart after a long lock', async () => {
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(resetTime)
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      await vi.advanceTimersByTimeAsync(1)
+      expect(breakNotifications).toEqual([])
+      expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval - 1)
+    })
+
+    it('shows the break when it comes due during a lock with pauseForSuspendOrLock off', async () => {
+      settings.set('pauseForSuspendOrLock', false)
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(2 * oneMinute)
+      expect(breakNotifications).toEqual(['mini'])
+    })
+
+    it('keeps a popup showing at the lock from running out behind the lock screen', async () => {
+      // What the main process does when a mini break popup comes up.
+      breaksPlanner.scheduler.cancel()
+      breaksPlanner.emit('microbreakStarted', true)
+      breakLog.noteBreakShown({ breakType: 'mini' })
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(resetTime)
+      expect(finishedMicrobreaks).toBe(0)
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      expect(closeBreakPopup).toHaveBeenCalledTimes(1)
+      expect(breakLogLines()).toEqual([
+        { event: 'away_break', away_seconds: resetTime / 1000, cause: 'lock', break_type: 'mini', seconds_shown: resetTime / 1000 }
+      ])
+    })
+  })
+
+  it('ends a spell whose wake was missed once the user has been active for a minute', async () => {
+    powerMonitor.emit('suspend')
+    vi.setSystemTime(Date.now() + 2 * resetTime)
+    for (let second = 0; second <= 60; second += 5) {
+      lastInputAt = Date.now()
+      await vi.advanceTimersByTimeAsync(5000)
+    }
+    expect(breakLogLines()).toEqual([
+      { event: 'away_break', away_seconds: 2 * resetTime / 1000, cause: 'suspend', break_type: 'mini' }
+    ])
+
+    sessionBus.deliver(screenSaverActiveChanged(true))
+    await vi.advanceTimersByTimeAsync(resetTime)
+    sessionBus.deliver(screenSaverActiveChanged(false))
+    expect(breakLogLines().at(-1)).toEqual(
+      { event: 'away_break', away_seconds: resetTime / 1000, cause: 'lock', break_type: 'mini' }
+    )
   })
 })

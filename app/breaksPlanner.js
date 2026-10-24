@@ -254,6 +254,10 @@ class BreaksPlanner extends EventEmitter {
     }
   }
 
+  holdScheduler () {
+    if (this.scheduler) this.scheduler.hold()
+  }
+
   correctScheduler () {
     if (this.scheduler) this.scheduler.correct()
   }
