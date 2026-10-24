@@ -331,15 +331,49 @@ describe('AwayBreaks', () => {
     expect(breakLogLines()).toMatchObject([{ event: 'away_break', cause: 'suspend', away_seconds: resetTime / 1000 + 60 }])
   })
 
-  it('ends a lock whose unlock was missed when GNOME reads the screen unlocked', async () => {
+  function answerLockState (isLocked) {
+    sessionBus.call.mockImplementation(async (message) => ({ body: message.member === 'GetActive' ? [isLocked] : [] }))
+  }
+
+  it('ends a lock whose unlock was missed when GNOME, having read it locked, reads it unlocked', async () => {
+    answerLockState(true)
     powerMonitor.emit('lock-screen')
     await vi.advanceTimersByTimeAsync(resetTime)
     expect(breakLogLines()).toEqual([])
-    sessionBus.call.mockImplementation(async (message) => ({ body: message.member === 'GetActive' ? [false] : [] }))
+    answerLockState(false)
     await vi.advanceTimersByTimeAsync(5000)
     expect(breakLogLines()).toEqual([
       { event: 'away_break', away_seconds: resetTime / 1000 + 5, cause: 'lock', break_type: 'mini' }
     ])
     expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval)
+  })
+
+  it('keeps a lock GNOME never reported open when GNOME reads unlocked', async () => {
+    answerLockState(false)
+    powerMonitor.emit('lock-screen')
+    await vi.advanceTimersByTimeAsync(resetTime)
+    powerMonitor.emit('unlock-screen')
+    expect(breakLogLines()).toEqual([
+      { event: 'away_break', away_seconds: resetTime / 1000, cause: 'lock', break_type: 'mini' }
+    ])
+  })
+
+  it('drops an unlocked answer that arrives after a new lock has begun', async () => {
+    let answerStaleRead = null
+    sessionBus.call.mockImplementation(async (message) => {
+      if (message.member !== 'GetActive') return { body: [] }
+      if (!answerStaleRead) return new Promise(resolve => { answerStaleRead = () => resolve({ body: [false] }) })
+      return { body: [true] }
+    })
+    sessionBus.deliver(screenSaverActiveChanged(true))
+    await vi.advanceTimersByTimeAsync(5000)
+    sessionBus.deliver(screenSaverActiveChanged(false))
+    sessionBus.deliver(screenSaverActiveChanged(true))
+    answerStaleRead()
+    await vi.advanceTimersByTimeAsync(resetTime)
+    sessionBus.deliver(screenSaverActiveChanged(false))
+    expect(breakLogLines()).toEqual([
+      { event: 'away_break', away_seconds: resetTime / 1000, cause: 'lock', break_type: 'mini' }
+    ])
   })
 })

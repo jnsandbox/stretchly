@@ -1,7 +1,8 @@
 import log from 'electron-log/main.js'
 
 const spellCheckMilliseconds = 5000
-// A gap this far beyond the check interval means the machine slept and woke.
+// This long between two checks, against an interval of spellCheckMilliseconds, means the
+// machine slept and woke.
 const sleptGapMilliseconds = 30000
 
 // A spell away runs while the screen is locked or the system is suspended, from whichever
@@ -47,19 +48,21 @@ class AwayBreaks {
     if (!this.isWatchingGnome) {
       this.isWatchingGnome = true
       // Electron sees no screen lock when running on the X11 backend under GNOME.
-      gnomeSession.watchScreenLock(isLocked => this.screenLockChanged(isLocked))
+      gnomeSession.watchScreenLock(isLocked => this.screenLockChanged(isLocked, { isFromGnome: true }))
     }
   }
 
-  screenLockChanged (isLocked) {
+  screenLockChanged (isLocked, { isFromGnome = false } = {}) {
     log.info(`System: screen ${isLocked ? 'locked' : 'unlocked'}`)
     if (isLocked === this.isScreenLocked) {
+      if (isLocked && isFromGnome) this.spell.gnomeReportedLock = true
       // An unlock that ends no lock ends no spell; timers may still have stalled.
       if (!isLocked) this.correctSchedule()
       return
     }
     this.isScreenLocked = isLocked
     this.awayChanged('lock')
+    if (isLocked && isFromGnome) this.spell.gnomeReportedLock = true
   }
 
   suspendChanged (isSuspended) {
@@ -77,7 +80,7 @@ class AwayBreaks {
     const changedAt = Date.now()
     if (isAway && !this.spell) {
       // Wall-clock time, because idle time and timers stall across a suspend.
-      this.spell = { cause, startedAt: changedAt, naturalBreakCleared: false }
+      this.spell = { cause, startedAt: changedAt, naturalBreakCleared: false, gnomeReportedLock: false }
       this.lastSpellCheckAt = changedAt
       this.spellCheckTimer = setInterval(() => this.checkForMissedEnd(), spellCheckMilliseconds)
       if (this.settings.get('pauseForSuspendOrLock')) this.breakPlanner.holdSchedules()
@@ -104,9 +107,15 @@ class AwayBreaks {
     }
     if (!this.isScreenLocked || !this.gnomeSession || this.isReadingLockState) return
     this.isReadingLockState = true
+    const spellAtRead = this.spell
     try {
       const isLocked = await this.gnomeSession.isScreenLocked()
-      if (isLocked === false && this.isScreenLocked) {
+      // An answer that outlived its spell describes a lock that is over.
+      if (this.spell !== spellAtRead || !this.isScreenLocked) return
+      if (isLocked === true) {
+        spellAtRead.gnomeReportedLock = true
+      } else if (isLocked === false && spellAtRead.gnomeReportedLock) {
+        // Without GNOME's own lock behind it, unlocked may only mean another locker is running.
         log.info('Stretchly: GNOME reads unlocked without an unlock event')
         this.screenLockChanged(false)
       }
