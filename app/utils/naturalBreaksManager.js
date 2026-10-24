@@ -48,11 +48,6 @@ class NaturalBreaksManager extends EventEmitter {
   // own idle monitor is preferred whenever it answers.
   async readIdleTime () {
     if (!this.usingNaturalBreaks) return 0
-    return this.readSystemIdleTime()
-  }
-
-  // Answers whether or not natural breaks are on.
-  async readSystemIdleTime () {
     const gnomeIdleMilliseconds = this.gnomeSession ? await this.gnomeSession.idleMilliseconds() : null
     return gnomeIdleMilliseconds ?? (powerMonitor.getSystemIdleTime() || desktopIdle.getIdleTime()) * 1000
   }

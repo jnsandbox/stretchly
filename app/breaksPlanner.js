@@ -18,6 +18,7 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler = null
     this.isPaused = false
     this.pollersSuspended = false
+    this.areSchedulesHeld = false
     this.gnomeSession = new GnomeSession()
     this.naturalBreaksManager = new NaturalBreaksManager(settings, this.gnomeSession)
     this.dndManager = new DndManager(settings)
@@ -26,13 +27,13 @@ class BreaksPlanner extends EventEmitter {
     this.on('microbreakStarted', (shouldPlaySound) => {
       const interval = this.settings.get('microbreakDuration')
       this.scheduler = new Scheduler(() => this.emit('finishMicrobreak', shouldPlaySound, true), interval, 'finishMicrobreak')
-      this.scheduler.plan()
+      this._planScheduler()
     })
 
     this.on('breakStarted', (shouldPlaySound) => {
       const interval = this.settings.get('breakDuration')
       this.scheduler = new Scheduler(() => this.emit('finishBreak', shouldPlaySound, true), interval, 'finishBreak')
-      this.scheduler.plan()
+      this._planScheduler()
     })
 
     this.naturalBreaksManager.on('clearBreakScheduler', () => {
@@ -159,7 +160,7 @@ class BreaksPlanner extends EventEmitter {
         }
       }
     }
-    this.scheduler.plan()
+    this._planScheduler()
   }
 
   nextBreakAfterNotification () {
@@ -168,7 +169,7 @@ class BreaksPlanner extends EventEmitter {
     const breakNotificationInterval = this.settings.get(`${scheduledBreakType}NotificationInterval`)
     const eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}`
     this.scheduler = new Scheduler(() => this.emit(eventName), breakNotificationInterval, eventName)
-    this.scheduler.plan()
+    this._planScheduler()
   }
 
   postponeCurrentBreak () {
@@ -186,7 +187,7 @@ class BreaksPlanner extends EventEmitter {
       eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}`
     }
     this.scheduler = new Scheduler(() => this.emit(eventName), postponeTime, eventName)
-    this.scheduler.plan()
+    this._planScheduler()
     this.emit('updateToolTip')
   }
 
@@ -203,7 +204,7 @@ class BreaksPlanner extends EventEmitter {
     }
     // The flag reaches only a start this skip brings on; a pause or clear cancels it with the scheduler.
     this.scheduler = new Scheduler(() => this.emit('startMicrobreak', { startedEarly: true }), delay, 'startMicrobreak')
-    this.scheduler.plan()
+    this._planScheduler()
     this.emit('updateToolTip')
   }
 
@@ -217,7 +218,7 @@ class BreaksPlanner extends EventEmitter {
       this.breakNumber = breakInterval
     }
     this.scheduler = new Scheduler(() => this.emit('startBreak', { startedEarly: true }), delay, 'startBreak')
-    this.scheduler.plan()
+    this._planScheduler()
     this.emit('updateToolTip')
   }
 
@@ -237,7 +238,7 @@ class BreaksPlanner extends EventEmitter {
     this.appExclusionsManager.stop()
     if (milliseconds !== 1) {
       this.scheduler = new Scheduler(() => this.emit('resumeBreaks'), milliseconds, 'resumeBreaks')
-      this.scheduler.plan()
+      this._planScheduler()
     }
   }
 
@@ -254,8 +255,21 @@ class BreaksPlanner extends EventEmitter {
     }
   }
 
-  holdScheduler () {
+  // While held, the current schedule and every one planned after it stop their timers
+  // while their time left counts down; releasing starts the current one again.
+  holdSchedules () {
+    this.areSchedulesHeld = true
     if (this.scheduler) this.scheduler.hold()
+  }
+
+  releaseSchedules () {
+    this.areSchedulesHeld = false
+    this.correctScheduler()
+  }
+
+  _planScheduler () {
+    this.scheduler.plan()
+    if (this.areSchedulesHeld) this.scheduler.hold()
   }
 
   correctScheduler () {

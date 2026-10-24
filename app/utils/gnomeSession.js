@@ -54,9 +54,15 @@ class GnomeSession {
     await this._reportCurrentScreenLock()
   }
 
-  // A failed or slow read reports nothing; the signals still arrive without it, so a slow
-  // helper is no sign of a stalled connection.
+  // A failed or slow read reports nothing.
   async _reportCurrentScreenLock () {
+    const isLocked = await this.isScreenLocked()
+    if (isLocked !== null) this._onScreenLockChanged(isLocked)
+  }
+
+  // GNOME's current lock state, or null when it does not answer. A slow helper is no sign
+  // of a stalled connection, so a timeout keeps the bus.
+  async isScreenLocked () {
     try {
       const reply = await this._call({
         destination: screenSaverInterface,
@@ -64,8 +70,10 @@ class GnomeSession {
         interface: screenSaverInterface,
         member: 'GetActive'
       }, { timeoutMilliseconds: lockStateTimeoutMilliseconds, dropsBusOnTimeout: false })
-      this._onScreenLockChanged(reply.body[0])
-    } catch (error) {}
+      return reply.body[0]
+    } catch (error) {
+      return null
+    }
   }
 
   _retryScreenLockWatch () {

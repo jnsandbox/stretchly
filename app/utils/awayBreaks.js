@@ -1,11 +1,8 @@
 import log from 'electron-log/main.js'
 
-const activityCheckMilliseconds = 5000
-// Input this recent counts as the user being active.
-const activeIdleMilliseconds = 20000
-// Activity this long while away means an unlock or a wake went unreported; typing a
-// password at the lock screen takes less.
-const missedEndActiveMilliseconds = 60000
+const spellCheckMilliseconds = 5000
+// A gap this far beyond the check interval means the machine slept and woke.
+const sleptGapMilliseconds = 30000
 
 // A spell away runs while the screen is locked or the system is suspended, from whichever
 // came first until both have ended. One that lasts naturalBreaksInactivityResetTime counts
@@ -13,19 +10,19 @@ const missedEndActiveMilliseconds = 60000
 // or a popup that runs out waits for the end of the spell.
 // Electron and GNOME can both report one screen lock, so a repeated lock is ignored.
 class AwayBreaks {
-  // readIdleMilliseconds reads the system idle time, whether or not natural breaks are on.
-  constructor ({ settings, breakPlanner, breakLog, closeBreakPopup, readIdleMilliseconds, updateTray }) {
+  constructor ({ settings, breakPlanner, breakLog, closeBreakPopup, updateTray }) {
     this.settings = settings
     this.breakPlanner = breakPlanner
     this.breakLog = breakLog
     this.closeBreakPopup = closeBreakPopup
-    this.readIdleMilliseconds = readIdleMilliseconds
     this.updateTray = updateTray
+    this.gnomeSession = null
     this.isScreenLocked = false
     this.isSuspended = false
     this.spell = null
-    this.activityCheckTimer = null
-    this.isReadingIdle = false
+    this.spellCheckTimer = null
+    this.lastSpellCheckAt = null
+    this.isReadingLockState = false
     this.isWatchingGnome = false
     this.onSuspended = () => this.suspendChanged(true)
     this.onResumed = () => this.suspendChanged(false)
@@ -34,14 +31,11 @@ class AwayBreaks {
     breakPlanner.on('naturalBreakCleared', () => {
       if (this.spell) this.spell.naturalBreakCleared = true
     })
-    // Input at the lock screen can end a natural break while the user is still away.
-    breakPlanner.on('naturalBreakRestarted', () => {
-      if (this.spell) this.holdSchedule()
-    })
   }
 
   // Safe to call again: listeners are replaced, and GNOME is only watched once.
   listen (powerMonitor, gnomeSession) {
+    this.gnomeSession = gnomeSession
     powerMonitor.removeListener('suspend', this.onSuspended)
     powerMonitor.removeListener('lock-screen', this.onScreenLocked)
     powerMonitor.removeListener('resume', this.onResumed)
@@ -78,58 +72,56 @@ class AwayBreaks {
     this.awayChanged('suspend')
   }
 
-  awayChanged (cause, changedAt = Date.now()) {
+  awayChanged (cause) {
     const isAway = this.isScreenLocked || this.isSuspended
+    const changedAt = Date.now()
     if (isAway && !this.spell) {
       // Wall-clock time, because idle time and timers stall across a suspend.
-      this.spell = { cause, startedAt: changedAt, naturalBreakCleared: false, activeSince: null }
-      this.activityCheckTimer = setInterval(() => this.checkForActivity(), activityCheckMilliseconds)
-      this.holdSchedule()
+      this.spell = { cause, startedAt: changedAt, naturalBreakCleared: false }
+      this.lastSpellCheckAt = changedAt
+      this.spellCheckTimer = setInterval(() => this.checkForMissedEnd(), spellCheckMilliseconds)
+      if (this.settings.get('pauseForSuspendOrLock')) this.breakPlanner.holdSchedules()
     } else if (!isAway && this.spell) {
       const spell = this.spell
       this.spell = null
-      clearInterval(this.activityCheckTimer)
-      this.activityCheckTimer = null
+      clearInterval(this.spellCheckTimer)
+      this.spellCheckTimer = null
       if (this.settings.get('pauseForSuspendOrLock')) this.breakPlanner.naturalBreaksManager.countIdleFrom(changedAt)
       this.endSpell(spell, changedAt)
     }
   }
 
-  // Ends a spell whose unlock or wake never arrived at the time the user came back, so it
-  // stretches over no later activity and a later lock is not taken as a repeat.
-  async checkForActivity () {
-    if (this.isReadingIdle) return
-    this.isReadingIdle = true
-    let idleMilliseconds
+  // Catches a wake or an unlock that was never reported, so a spell does not stretch over
+  // later work and a later lock is not taken as a repeat. A missed unlock is caught only
+  // where GNOME answers for its lock state.
+  async checkForMissedEnd () {
+    const checkedAt = Date.now()
+    const sinceLastCheck = checkedAt - this.lastSpellCheckAt
+    this.lastSpellCheckAt = checkedAt
+    if (this.isSuspended && sinceLastCheck >= sleptGapMilliseconds) {
+      log.info('Stretchly: woke from suspend without a resume event')
+      this.suspendChanged(false)
+    }
+    if (!this.isScreenLocked || !this.gnomeSession || this.isReadingLockState) return
+    this.isReadingLockState = true
     try {
-      idleMilliseconds = await this.readIdleMilliseconds()
-    } catch {
-      return
+      const isLocked = await this.gnomeSession.isScreenLocked()
+      if (isLocked === false && this.isScreenLocked) {
+        log.info('Stretchly: GNOME reads unlocked without an unlock event')
+        this.screenLockChanged(false)
+      }
     } finally {
-      this.isReadingIdle = false
-    }
-    const spell = this.spell
-    if (!spell || idleMilliseconds === null || idleMilliseconds === undefined) return
-    const lastInputAt = Date.now() - idleMilliseconds
-    if (idleMilliseconds >= activeIdleMilliseconds || lastInputAt < spell.startedAt) {
-      spell.activeSince = null
-      return
-    }
-    spell.activeSince ??= lastInputAt
-    if (Date.now() - spell.activeSince >= missedEndActiveMilliseconds) {
-      log.info('Stretchly: active for a minute while away, so the unlock or wake was missed')
-      this.isScreenLocked = false
-      this.isSuspended = false
-      this.awayChanged(spell.cause, spell.activeSince)
+      this.isReadingLockState = false
     }
   }
 
   endSpell ({ cause, startedAt, naturalBreakCleared }, endedAt) {
     const awayMilliseconds = endedAt - startedAt
+    this.breakPlanner.releaseSchedules()
     if (!this.settings.get('pauseForSuspendOrLock') ||
       awayMilliseconds < this.settings.get('naturalBreaksInactivityResetTime') ||
       naturalBreakCleared || !this.isScheduleRunning()) {
-      this.correctSchedule()
+      this.updateTray()
       return
     }
     this.breakLog.recordAwayBreak({
@@ -141,11 +133,6 @@ class AwayBreaks {
     this.updateTray()
   }
 
-  // A break coming due, or a popup running out, waits until the user is back.
-  holdSchedule () {
-    if (this.settings.get('pauseForSuspendOrLock')) this.breakPlanner.holdScheduler()
-  }
-
   // A natural break, Do Not Disturb, an app exclusion or a pause owns the restart of a stopped schedule.
   isScheduleRunning () {
     const breakPlanner = this.breakPlanner
@@ -154,7 +141,7 @@ class AwayBreaks {
       !breakPlanner.appExclusionsManager.isSchedulerCleared
   }
 
-  // Brings forward a break that came due while timers were stalled or held.
+  // Brings forward a break that came due while timers were stalled.
   // A held schedule stays held until the spell ends.
   correctSchedule () {
     if (this.spell) return

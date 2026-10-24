@@ -527,7 +527,6 @@ function startPowerMonitoring () {
     breakPlanner,
     breakLog,
     closeBreakPopup,
-    readIdleMilliseconds: () => breakPlanner.naturalBreaksManager.readSystemIdleTime(),
     updateTray
   })
   awayBreaks.listen(powerMonitor, breakPlanner.gnomeSession)
