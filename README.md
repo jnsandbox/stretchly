@@ -456,8 +456,8 @@ For Windows, note that paths not specified. This is because on Windows, the API 
 
 You can also specify `appExclusionsCheckInterval` in milliseconds: lower number means more often checks, but also higher CPU usage. Default value is `2000` which is 2 seconds.
 
-#### Pause breaks on Suspend/Lock ![Not Reliable](https://img.shields.io/badge/Not_Reliable-β-yellow)
-If you don't want to reset breaks once system is back from Suspend/Lock, set `pauseForSuspendOrLock` to `false`.
+#### Count a long Suspend/Lock as a break ![Not Reliable](https://img.shields.io/badge/Not_Reliable-β-yellow)
+A screen lock or suspend lasting `naturalBreaksInactivityResetTime` or longer counts as a break: breaks start over once the screen is unlocked and the system awake. A shorter one leaves breaks running. If you don't want a lock or suspend to affect breaks at all, set `pauseForSuspendOrLock` to `false`.
 
 #### Monitor to show breaks on ![Not Reliable](https://img.shields.io/badge/Not_Reliable-β-yellow)
 In case you have disabled showing of breaks on all monitors, you can specify which one should contain the break window. Set `screen` value to one of the following:

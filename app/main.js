@@ -31,7 +31,7 @@ import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
-import SuspendOrLockPause from './utils/suspendOrLockPause.js'
+import AwayBreaks from './utils/awayBreaks.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -87,7 +87,7 @@ let contributorPreferencesWin = null
 let syncPreferencesWin = null
 let myStretchlyWin = null
 let settings
-let suspendOrLockPause = null
+let awayBreaks = null
 let nextIdea = null
 let danger = 0
 let updateChecker
@@ -522,8 +522,14 @@ i18next.on('languageChanged', () => {
 })
 
 function startPowerMonitoring () {
-  suspendOrLockPause ??= new SuspendOrLockPause({ settings, breakPlanner, pauseBreaks, resumeBreaks, updateTray })
-  suspendOrLockPause.listen(powerMonitor, breakPlanner.gnomeSession)
+  awayBreaks ??= new AwayBreaks({ settings, breakPlanner, breakLog, closeBreakPopup, updateTray })
+  awayBreaks.listen(powerMonitor, breakPlanner.gnomeSession)
+}
+
+// Closes a showing popup without counting it as taken, postponed or skipped.
+function closeBreakPopup () {
+  if (microbreakWins) microbreakWins = breakComplete(false, microbreakWins, 'mini')
+  if (breakWins) breakWins = breakComplete(false, breakWins, 'long')
 }
 
 function closeWindows (windowArray) {
@@ -1278,11 +1284,8 @@ function loadIdeas () {
 }
 
 // milliseconds is 1 for an indefinite pause.
-// The lock and suspend handler passes shouldLog false: the focus log already records both ends.
-function pauseBreaks (milliseconds, shouldLog = true) {
-  if (shouldLog) {
-    breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
-  }
+function pauseBreaks (milliseconds) {
+  breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
   if (microbreakWins) {
     increaseDanger(1)
     finishMicrobreak(false)

@@ -114,12 +114,18 @@ export default class BreakLog {
     }, scheduledBreakType)
   }
 
-  // Writes nothing unless a logged pause is open, so stretchly's unlogged pause for a
-  // screen lock or suspend, and a reset while not paused, end silently.
+  // Writes nothing unless a logged pause is open, so a reset while not paused ends silently.
   recordResumed () {
     if (this.pausedAt === null) return
     this._append({ event: 'resumed', paused_minutes: minutesToOneDecimal(Date.now() - this.pausedAt) })
     this.pausedAt = null
+  }
+
+  // cause is 'lock' or 'suspend', whichever started the time away.
+  recordAwayBreak ({ awayMilliseconds, cause, scheduledBreakType }) {
+    this._appendScheduleEvent({
+      event: 'away_break', away_seconds: Math.round(awayMilliseconds / 1000), cause
+    }, scheduledBreakType)
   }
 
   recordReset ({ scheduledBreakType }) {
