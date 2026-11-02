@@ -33,6 +33,7 @@ import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
 import AwayBreaks from './utils/awayBreaks.js'
 import { longBreakWarning, longBreakWindowText } from './utils/breakLogSummary.js'
+import { defaultFocusLogPath } from './utils/focusLogSummary.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -954,7 +955,7 @@ function startBreak ({ startedEarly = false } = {}) {
 
   const [headline, todayLine, usage] = longBreakWindowText({
     logFilePath: breakLog.logFilePath,
-    focusLogPath: join(app.getPath('home'), '.local', 'state', 'break-timer', 'focus.jsonl')
+    focusLogPath: defaultFocusLogPath
   })
   const windowText = [headline, todayLine]
   const idea = nextIdea ? (nextIdea.map((val, index) => val || windowText[index])) : windowText

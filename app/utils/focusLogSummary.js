@@ -10,6 +10,12 @@ const unattributed = '(unattributed)'
 const braveAppId = 'brave-browser.desktop'
 const braveOwnEntrySeconds = 20 * 60
 
+const newlineByte = 0x0a
+const extensionQuestion = 'Is the focus-log extension running?'
+
+// The extension's default log, in the user's home folder.
+export const defaultFocusLogPath = join(homedir(), '.local', 'state', 'break-timer', 'focus.jsonl')
+
 const awayStartEvents = { idle_start: 'idle', lock: 'lock', suspend: 'suspend' }
 const awayEndEvents = { idle_end: 'idle', unlock: 'lock', resume: 'suspend' }
 
@@ -27,11 +33,10 @@ function parsedLine (text, focusLogPath) {
   }
 }
 
-// Returns the lines from `since` on, preceded by those from the last focus line before
-// it, which say what had focus overnight. Also returns the time of the log's last line.
-// The log is never rotated, so it is read backwards from its end and stops there.
-export function readFocusLogSince (focusLogPath, since) {
-  const missing = { exists: false, lines: [], lastLineTime: null }
+// The log is never rotated, so it is read backwards, back to the last focus line before
+// `since`: that line says which window had focus overnight.
+function readFocusLogSince (focusLogPath, since) {
+  const missing = { lines: [], lastLineTime: null }
   if (!existsSync(focusLogPath)) return missing
   try {
     return readExistingFocusLogSince(focusLogPath, since)
@@ -58,7 +63,7 @@ function readExistingFocusLogSince (focusLogPath, since) {
       readSync(file, chunk, 0, readBytes, position)
       unread = Buffer.concat([chunk, unread])
       // Until the file's start is reached, the text before the first newline may be a partial line.
-      const firstCompleteLine = position > 0 ? unread.indexOf(10) + 1 : 0
+      const firstCompleteLine = position > 0 ? unread.indexOf(newlineByte) + 1 : 0
       if (position > 0 && firstCompleteLine === 0) continue
       const texts = unread.subarray(firstCompleteLine).toString('utf8').split('\n')
       unread = unread.subarray(0, firstCompleteLine)
@@ -74,17 +79,15 @@ function readExistingFocusLogSince (focusLogPath, since) {
         }
       }
     }
-    return { exists: true, lines: linesNewestFirst.reverse(), lastLineTime }
+    return { lines: linesNewestFirst.reverse(), lastLineTime }
   } finally {
     closeSync(file)
   }
 }
 
-// Totals the seconds each window had focus while the user was not idle, locked or
-// suspended, counting the stretches that start from `from` on. Each stretch between two
-// lines belongs to the state the first one left, and the last runs to `until`. Lines
-// before `from` only set the state, so a stretch across midnight belongs to the day before.
-export function activeSecondsPerWindow (lines, { from, until }) {
+// Lines before `from` only set the state, so a stretch across midnight belongs to the
+// day before, as in scripts/focus_test_day.py.
+function activeSecondsPerWindow (lines, { from, until }) {
   const secondsPerWindow = new Map()
   const openAway = new Set()
   let focused = null
@@ -92,9 +95,9 @@ export function activeSecondsPerWindow (lines, { from, until }) {
   const addStretch = (endTime) => {
     if (previousTime === null || previousTime < from || focused === null || openAway.size > 0) return
     const key = JSON.stringify([focused.appId, focused.title])
-    const window = secondsPerWindow.get(key) || { appId: focused.appId, title: focused.title, seconds: 0 }
-    window.seconds += (endTime - previousTime) / 1000
-    secondsPerWindow.set(key, window)
+    const focusedWindow = secondsPerWindow.get(key) || { appId: focused.appId, title: focused.title, seconds: 0 }
+    focusedWindow.seconds += (endTime - previousTime) / 1000
+    secondsPerWindow.set(key, focusedWindow)
   }
   for (const line of lines) {
     const time = lineTime(line)
@@ -166,12 +169,13 @@ function bravePageTitle (title) {
   return (title || '').replace(/ - Brave$/, '').replace(/^\(\d+\) /, '')
 }
 
-function entryName (window, desktopNames) {
-  if (vsCodeAppIds.has(window.appId)) return `VS Code · ${vsCodeWorkspace(window.title)}`
-  if (window.appId === braveAppId) return `Brave · ${bravePageTitle(window.title)}`
+function entryName (focusedWindow, desktopNames) {
+  const { appId, title } = focusedWindow
+  if (vsCodeAppIds.has(appId)) return `VS Code · ${vsCodeWorkspace(title)}`
+  if (appId === braveAppId) return `Brave · ${bravePageTitle(title)}`
   // GNOME gives no app ID to some windows, such as games run through Steam.
-  if (window.appId.startsWith('window:')) return (window.title || '').trim() || window.appId
-  return appName(window.appId, desktopNames)
+  if (appId.startsWith('window:')) return (title || '').trim() || appId
+  return appName(appId, desktopNames)
 }
 
 function addSeconds (secondsPerEntry, name, seconds) {
@@ -184,9 +188,9 @@ function rankedUsage (windows) {
   const desktopNames = new Map()
   const secondsPerEntry = new Map()
   const secondsPerBravePage = new Map()
-  for (const window of windows) {
-    const name = entryName(window, desktopNames)
-    addSeconds(window.appId === braveAppId ? secondsPerBravePage : secondsPerEntry, name, window.seconds)
+  for (const focusedWindow of windows) {
+    const name = entryName(focusedWindow, desktopNames)
+    addSeconds(focusedWindow.appId === braveAppId ? secondsPerBravePage : secondsPerEntry, name, focusedWindow.seconds)
   }
   for (const [name, seconds] of secondsPerBravePage) {
     addSeconds(secondsPerEntry, seconds >= braveOwnEntrySeconds ? name : 'Brave · other tabs', seconds)
@@ -196,7 +200,7 @@ function rankedUsage (windows) {
 }
 
 // Returns the entries the break window lists: the top 5, then the rest as Other.
-export function listedUsage (windows) {
+function listedUsage (windows) {
   const listedCount = 5
   const ranked = rankedUsage(windows)
   const listed = ranked.slice(0, listedCount)
@@ -205,7 +209,33 @@ export function listedUsage (windows) {
   return listed.map(({ name, seconds }) => ({ name, duration: durationText(seconds) }))
 }
 
-export function durationText (seconds) {
+function durationText (seconds) {
   const minutes = Math.floor(seconds / 60)
   return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+function clockText (epochMilliseconds) {
+  const time = new Date(epochMilliseconds)
+  return `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
+}
+
+// Within a stretch of work as long as a break interval the extension always writes a
+// line, so silence since the last break means it stopped, not a quiet day.
+function staleWarning (lastLineTime, midnight, lastBreakEnded) {
+  if (lastLineTime === null || lastLineTime < midnight) return `No window data today. ${extensionQuestion}`
+  if (lastBreakEnded !== null && lastLineTime < lastBreakEnded) {
+    return `No window data since ${clockText(lastLineTime)}. ${extensionQuestion}`
+  }
+  return null
+}
+
+// Returns today's active time and listed entries, or a warning when the log is missing
+// or stale. lastBreakEnded is when the last real break or this run started, or null.
+export function todaysFocusUsage ({ focusLogPath, midnight, lastBreakEnded }) {
+  const { lines, lastLineTime } = readFocusLogSince(focusLogPath, midnight)
+  const warning = staleWarning(lastLineTime, midnight, lastBreakEnded)
+  if (warning !== null) return { warning }
+  const windows = activeSecondsPerWindow(lines, { from: midnight, until: Date.now() })
+  const activeSeconds = windows.reduce((total, focusedWindow) => total + focusedWindow.seconds, 0)
+  return { activeTime: durationText(activeSeconds), entries: listedUsage(windows) }
 }
