@@ -26,8 +26,8 @@ function minutesSince (logTime) {
   return Math.floor((Date.now() - new Date(logTime).getTime()) / 60000)
 }
 
-function minutesText (minutes) {
-  return minutes === 1 ? '1 minute' : `${minutes} minutes`
+function countText (count, singularNoun) {
+  return count === 1 ? `1 ${singularNoun}` : `${count} ${singularNoun}s`
 }
 
 function isRealBreak (line) {
@@ -52,7 +52,7 @@ function timeSinceLastBreak (lines) {
 }
 
 function sinceLastBreakText ({ minutes, sinceStart }) {
-  return `${minutesText(minutes)} ${sinceStart ? 'since you started' : 'since your last break'}`
+  return `${countText(minutes, 'minute')} ${sinceStart ? 'since you started' : 'since your last break'}`
 }
 
 function startOfToday () {
@@ -61,24 +61,25 @@ function startOfToday () {
   return midnight.getTime()
 }
 
-// The long break window's title and text, in place of a break idea. The counts read
-// every line since local midnight, so a restart of stretchly keeps them.
+// Returns the long break window's title and text. The counts read every line since
+// local midnight, so a restart of stretchly keeps them.
 export function longBreakWindowText ({ logFilePath }) {
   const lines = parsedLines(logFilePath)
   const sinceLastBreak = timeSinceLastBreak(lines)
-  const todaysLines = lines.filter(line => new Date(line.time).getTime() >= startOfToday())
+  const midnight = startOfToday()
+  const todaysLines = lines.filter(line => new Date(line.time).getTime() >= midnight)
   const breaksTaken = todaysLines.filter(isRealBreak).length
   const postponed = todaysLines.filter(line => line.event === breakLogEvents.postponed).length
   return [
     sinceLastBreak === null ? '' : sinceLastBreakText(sinceLastBreak),
-    `Today: ${breaksTaken === 1 ? '1 break' : `${breaksTaken} breaks`} taken · ${postponed} postponed`
+    `Today: ${countText(breaksTaken, 'break')} taken · ${postponed} postponed`
   ]
 }
 
 // secondsText is stretchly's own lead-time text, kept when the lead time is not whole minutes.
 export function longBreakWarning ({ leadMilliseconds, secondsText, logFilePath }) {
   const firstSentence = leadMilliseconds > 0 && leadMilliseconds % 60000 === 0
-    ? `Long break in ${minutesText(leadMilliseconds / 60000)}.`
+    ? `Long break in ${countText(leadMilliseconds / 60000, 'minute')}.`
     : `${secondsText}.`
   const timeSinceLastBreak = readTimeSinceLastBreak(logFilePath)
   if (timeSinceLastBreak === null) return firstSentence

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { tmpdir } from 'node:os'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import log from 'electron-log/main.js'
-import { longBreakWarning, longBreakWindowText } from '../app/utils/timeSinceLastBreak'
+import { longBreakWarning, longBreakWindowText } from '../app/utils/breakLogSummary'
 
 vi.mock('electron-log/main.js', () => ({ default: { warn: vi.fn() } }))
 
@@ -11,10 +11,27 @@ process.env.TZ = 'Europe/Amsterdam'
 
 const twoMinutes = 120000
 
-describe('long break warning', () => {
-  let logFolder = null
-  let logFilePath = null
+let logFolder = null
+let logFilePath = null
 
+async function writeLog (lines) {
+  await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
+}
+
+beforeEach(async () => {
+  logFolder = await mkdtemp(join(tmpdir(), 'stretchly-break-log-summary-'))
+  logFilePath = join(logFolder, 'breaks.jsonl')
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
+})
+
+afterEach(async () => {
+  vi.useRealTimers()
+  vi.clearAllMocks()
+  await rm(logFolder, { recursive: true, force: true })
+})
+
+describe('long break warning', () => {
   // secondsText stands in for stretchly's own translated lead-time text.
   function warning (leadMilliseconds = twoMinutes) {
     return longBreakWarning({
@@ -23,23 +40,6 @@ describe('long break warning', () => {
       logFilePath
     })
   }
-
-  async function writeLog (lines) {
-    await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
-  }
-
-  beforeEach(async () => {
-    logFolder = await mkdtemp(join(tmpdir(), 'stretchly-since-last-break-'))
-    logFilePath = join(logFolder, 'breaks.jsonl')
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
-  })
-
-  afterEach(async () => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
-    await rm(logFolder, { recursive: true, force: true })
-  })
 
   it('counts from a long break run to its full length', async () => {
     await writeLog([
@@ -138,26 +138,6 @@ describe('long break warning', () => {
 })
 
 describe('long break window text', () => {
-  let logFolder = null
-  let logFilePath = null
-
-  async function writeLog (lines) {
-    await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
-  }
-
-  beforeEach(async () => {
-    logFolder = await mkdtemp(join(tmpdir(), 'stretchly-break-window-'))
-    logFilePath = join(logFolder, 'breaks.jsonl')
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
-  })
-
-  afterEach(async () => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
-    await rm(logFolder, { recursive: true, force: true })
-  })
-
   it('heads with the time since the last break and counts today\'s breaks across a restart', async () => {
     await writeLog([
       { time: '2026-10-19T17:00:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 },
@@ -172,6 +152,7 @@ describe('long break window text', () => {
     expect(longBreakWindowText({ logFilePath }))
       .toEqual(['52 minutes since your last break', 'Today: 3 breaks taken · 0 postponed'])
   })
+
   it('counts every press of postpone, and says since you started before any break', async () => {
     await writeLog([
       { time: '2026-10-20T09:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
