@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import log from 'electron-log/main.js'
 import { breakLogBreakTypes, breakLogEvents } from './breakLog.js'
+import { activeSecondsPerWindow, durationText, listedUsage, readFocusLogSince } from './focusLogSummary.js'
 
 // The lines on which stretchly restarts its schedule after the user rested. A lock
 // or suspend writes away_break only when it lasted long enough to count.
@@ -22,8 +23,9 @@ function parsedLines (logFilePath) {
   })
 }
 
-function minutesSince (logTime) {
-  return Math.floor((Date.now() - new Date(logTime).getTime()) / 60000)
+function sinceLine (line, sinceStart) {
+  const since = new Date(line.time).getTime()
+  return { since, minutes: Math.floor((Date.now() - since) / 60000), sinceStart }
 }
 
 function countText (count, singularNoun) {
@@ -36,8 +38,8 @@ function isRealBreak (line) {
 }
 
 // Reads the break log back for when the user last rested, counting from this run's
-// start when no real break has ended since. Returns { minutes, sinceStart }, or null
-// when the log holds no start line.
+// start when no real break has ended since. Returns { since, minutes, sinceStart },
+// since in epoch milliseconds, or null when the log holds no start line.
 export function readTimeSinceLastBreak (logFilePath) {
   return timeSinceLastBreak(parsedLines(logFilePath))
 }
@@ -45,8 +47,8 @@ export function readTimeSinceLastBreak (logFilePath) {
 function timeSinceLastBreak (lines) {
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index]
-    if (isRealBreak(line)) return { minutes: minutesSince(line.time), sinceStart: false }
-    if (line.event === breakLogEvents.start) return { minutes: minutesSince(line.time), sinceStart: true }
+    if (isRealBreak(line)) return sinceLine(line, false)
+    if (line.event === breakLogEvents.start) return sinceLine(line, true)
   }
   return null
 }
@@ -61,19 +63,40 @@ function startOfToday () {
   return midnight.getTime()
 }
 
-// Returns the long break window's title and text. The counts read every line since
-// local midnight, so a restart of stretchly keeps them.
-export function longBreakWindowText ({ logFilePath }) {
+function clockText (epochMilliseconds) {
+  const time = new Date(epochMilliseconds)
+  return `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
+}
+
+// The extension writes at least an idle line within any stretch of work as long as a
+// break interval, so silence since the last break means it stopped, not a quiet day.
+function staleFocusLogWarning (focusLog, sinceLastBreak, midnight) {
+  const question = 'Is the focus-log extension running?'
+  if (focusLog.lastLineTime === null || focusLog.lastLineTime < midnight) return `No window data today. ${question}`
+  if (sinceLastBreak !== null && focusLog.lastLineTime < sinceLastBreak.since) {
+    return `No window data since ${clockText(focusLog.lastLineTime)}. ${question}`
+  }
+  return null
+}
+
+// Returns the long break window's title, its today line, and where today's active
+// time went. The counts read every line since local midnight, so a restart of
+// stretchly keeps them.
+export function longBreakWindowText ({ logFilePath, focusLogPath }) {
   const lines = parsedLines(logFilePath)
   const sinceLastBreak = timeSinceLastBreak(lines)
   const midnight = startOfToday()
   const todaysLines = lines.filter(line => new Date(line.time).getTime() >= midnight)
   const breaksTaken = todaysLines.filter(isRealBreak).length
   const postponed = todaysLines.filter(line => line.event === breakLogEvents.postponed).length
-  return [
-    sinceLastBreak === null ? '' : sinceLastBreakText(sinceLastBreak),
-    `Today: ${countText(breaksTaken, 'break')} taken · ${postponed} postponed`
-  ]
+  const breakCounts = `${countText(breaksTaken, 'break')} taken · ${postponed} postponed`
+  const headline = sinceLastBreak === null ? '' : sinceLastBreakText(sinceLastBreak)
+  const focusLog = readFocusLogSince(focusLogPath, midnight)
+  const focusLogWarning = staleFocusLogWarning(focusLog, sinceLastBreak, midnight)
+  if (focusLogWarning !== null) return [headline, `Today: ${breakCounts}`, { warning: focusLogWarning }]
+  const windows = activeSecondsPerWindow(focusLog.lines, { from: midnight, until: Date.now() })
+  const activeSeconds = windows.reduce((total, window) => total + window.seconds, 0)
+  return [headline, `Today: ${durationText(activeSeconds)} active · ${breakCounts}`, { entries: listedUsage(windows) }]
 }
 
 // secondsText is stretchly's own lead-time text, kept when the lead time is not whole minutes.

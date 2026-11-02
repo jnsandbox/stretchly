@@ -3,9 +3,26 @@ import applyBreakHealthEffect from './utils/breakHealthEffect.js'
 import createRunOnce from './utils/runOnce.js'
 import './platform.js'
 
+// Window titles are shown as text, never as markup.
+function showUsage (usageElement, usage) {
+  if (!usage) return
+  if (usage.warning) {
+    usageElement.classList.add('warning')
+    usageElement.textContent = usage.warning
+    return
+  }
+  for (const entry of usage.entries) {
+    const name = document.createElement('span')
+    name.textContent = entry.name
+    const duration = document.createElement('span')
+    duration.textContent = entry.duration
+    usageElement.append(name, duration)
+  }
+}
+
 window.onload = async (event) => {
   const [idea, started, duration, strictMode, postpone,
-    postponePercent, backgroundColor, danger, breakHealthMode] = await window.breaks.sendBreakData()
+    postponePercent, backgroundColor, danger, breakHealthMode, usage] = await window.breaks.sendBreakData()
 
   document.ondragover = event =>
     event.preventDefault()
@@ -33,6 +50,8 @@ window.onload = async (event) => {
 
   document.querySelector('.break-idea').innerHTML = window.breaks.sanitizeIdea(idea[0])
   document.querySelector('.break-text').innerHTML = window.breaks.sanitizeIdea(idea[1])
+
+  showUsage(document.querySelector('.break-usage'), usage)
 
   document.querySelectorAll('.break-idea a, .break-text a').forEach(a => {
     a.onclick = (event) => {
