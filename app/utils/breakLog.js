@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { padded } from './logLines.js'
 
-// The events and break types the log's readers key on, so a rename here reaches them.
+// The event names and break types the break-log summary reads.
 export const breakLogEvents = {
   start: 'start',
   taken: 'taken',
@@ -8,11 +9,7 @@ export const breakLogEvents = {
   naturalBreakRestarted: 'natural_break_restarted',
   awayBreak: 'away_break'
 }
-export const breakLogBreakTypes = { mini: 'mini', long: 'long' }
-
-function padded (number, width = 2) {
-  return String(number).padStart(width, '0')
-}
+export const breakLogBreakTypes = { mini: 'mini' }
 
 // Local time as 2026-10-13T15:12:03.042+02:00, the format of the GNOME extension's
 // ~/.local/state/break-timer/focus.jsonl, so the two logs join on time.
