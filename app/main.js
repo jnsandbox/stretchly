@@ -32,6 +32,7 @@ import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
 import AwayBreaks from './utils/awayBreaks.js'
+import { longBreakWarning } from './utils/timeSinceLastBreak.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -734,7 +735,8 @@ function startMicrobreakNotification () {
 }
 
 function startBreakNotification () {
-  showNotification(i18next.t('main.breakIn', { seconds: settings.get('breakNotificationInterval') / 1000 }))
+  const firstSentence = `${i18next.t('main.breakIn', { seconds: settings.get('breakNotificationInterval') / 1000 })}.`
+  showNotification(longBreakWarning(firstSentence, breakLog.logFilePath))
   log.info('Stretchly: showing Long break notification')
   breakPlanner.nextBreakAfterNotification()
   updateTray()
