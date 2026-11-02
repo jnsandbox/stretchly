@@ -270,6 +270,8 @@ Stretchly sanitizes all HTML to keep break windows secure by removing any unsupp
 #### Editing break notification interval [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, change `breakNotificationInterval: 30000,` to whatever value you want. 30000 is 30 seconds. Same goes for Mini breaks.
 
+The Long break notification also says how long since your last real break, such as `Long break in 2 minutes. 53 minutes since your last break.` A Long break run to its full length, a natural break and a long enough Suspend/Lock count as real breaks; with none since Stretchly started, it says `since you started`. A notification interval of whole minutes is said in minutes.
+
 #### Editing sunrise time to pause breaks until morning
 In the preferences file you can set the `morningHour` setting to pause until that hour today or the next day
 Otherwise, you can set `morningHour: "sunrise"` and set `posLatitude`, `posLongitude` in

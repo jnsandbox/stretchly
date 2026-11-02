@@ -735,8 +735,12 @@ function startMicrobreakNotification () {
 }
 
 function startBreakNotification () {
-  const firstSentence = `${i18next.t('main.breakIn', { seconds: settings.get('breakNotificationInterval') / 1000 })}.`
-  showNotification(longBreakWarning(firstSentence, breakLog.logFilePath))
+  const leadMilliseconds = settings.get('breakNotificationInterval')
+  showNotification(longBreakWarning({
+    leadMilliseconds,
+    secondsText: i18next.t('main.breakIn', { seconds: leadMilliseconds / 1000 }),
+    logFilePath: breakLog.logFilePath
+  }))
   log.info('Stretchly: showing Long break notification')
   breakPlanner.nextBreakAfterNotification()
   updateTray()
