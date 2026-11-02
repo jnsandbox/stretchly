@@ -69,6 +69,27 @@ body.break-health-mode {
   margin-top: 60px;
 }
 
+.breaks > :nth-child(1) >  .break-usage {
+  column-gap: 40px;
+  display: grid;
+  font-size: 20px;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  letter-spacing: 0.29px;
+  line-height: 30px;
+  margin-top: 30px;
+  text-align: left;
+}
+
+.breaks > :nth-child(1) >  .break-usage.warning {
+  display: block;
+  text-align: center;
+}
+
+.breaks > :nth-child(1) >  .break-usage > span:nth-child(2n) {
+  text-align: right;
+}
+
 .breaks > :nth-child(2) {
   font-size: 18px;
   letter-spacing: 0.26px;

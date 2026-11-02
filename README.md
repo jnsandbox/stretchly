@@ -132,7 +132,9 @@ When you run *Stretchly* for the first time, you are presented with a Welcome wi
 
 *Stretchly* itself lives in your tray, only displaying a reminder window from time to time, which contains an idea for a break.
 
-A Long break shows no idea. Its window says how long since your last real break, such as `52 minutes since your last break`, counted as in the Long break notification. Below that is a line with today's breaks, such as `Today: 3 breaks taken · 2 postponed`: every real break and every press of Postpone since midnight, read from the break log so a restart of Stretchly keeps them.
+A Long break shows no idea. Its window says how long since your last real break, such as `52 minutes since your last break`, counted as in the Long break notification. Below that is a line with today's active time and breaks, such as `Today: 4h 10m active · 3 breaks taken · 2 postponed`. The breaks are every real break and every press of Postpone since midnight, read from the break log so a restart of Stretchly keeps them.
+
+Active time and the list under it come from the focus log that the GNOME focus-log extension writes to `~/.local/state/break-timer/focus.jsonl`. Active time is time a window had focus while you were not idle, locked or suspended. The list shows the 5 entries with the most active time today, and the rest as one `Other` line. An app is one entry, named as in its desktop file, except that VS Code is split by workspace (`VS Code · break_timer`) and Brave by page: a page with 20 minutes or more today is its own entry, and the rest is `Brave · other tabs`. When the focus log has nothing since your last real break, or does not exist, the window says so in place of the list, such as `No window data since 09:12. Is the focus-log extension running?`, and the today line leaves out active time.
 
 <img src="minibreak.png" height="340">
 

@@ -13,6 +13,7 @@ const twoMinutes = 120000
 
 let logFolder = null
 let logFilePath = null
+let focusLogPath = null
 
 async function writeLog (lines) {
   await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
@@ -21,6 +22,10 @@ async function writeLog (lines) {
 beforeEach(async () => {
   logFolder = await mkdtemp(join(tmpdir(), 'stretchly-break-log-summary-'))
   logFilePath = join(logFolder, 'breaks.jsonl')
+  focusLogPath = join(logFolder, 'focus.jsonl')
+  // No desktop entries, so app names fall back to the app ID.
+  process.env.XDG_DATA_HOME = join(logFolder, 'data')
+  process.env.XDG_DATA_DIRS = join(logFolder, 'data-dirs')
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
 })
@@ -138,6 +143,8 @@ describe('long break warning', () => {
 })
 
 describe('long break window text', () => {
+  const noFocusLog = { warning: 'No window data today. Is the focus-log extension running?' }
+
   it('heads with the time since the last break and counts today\'s breaks across a restart', async () => {
     await writeLog([
       { time: '2026-10-19T17:00:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 },
@@ -149,8 +156,8 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:00:00.000+02:00', event: 'away_break', away_seconds: 600, cause: 'lock', break_type: 'long' },
       { time: '2026-10-20T09:08:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
     ])
-    expect(longBreakWindowText({ logFilePath }))
-      .toEqual(['52 minutes since your last break', 'Today: 3 breaks taken · 0 postponed'])
+    expect(longBreakWindowText({ logFilePath, focusLogPath }))
+      .toEqual(['52 minutes since your last break', 'Today: 3 breaks taken · 0 postponed', noFocusLog])
   })
 
   it('counts every press of postpone, and says since you started before any break', async () => {
@@ -162,8 +169,8 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:50:00.000+02:00', event: 'postponed', previous_postpones: 0, break_type: 'long', seconds_shown: 3 },
       { time: '2026-10-20T09:55:00.000+02:00', event: 'postponed', previous_postpones: 1, break_type: 'long', seconds_shown: 4 }
     ])
-    expect(longBreakWindowText({ logFilePath }))
-      .toEqual(['60 minutes since you started', 'Today: 0 breaks taken · 2 postponed'])
+    expect(longBreakWindowText({ logFilePath, focusLogPath }))
+      .toEqual(['60 minutes since you started', 'Today: 0 breaks taken · 2 postponed', noFocusLog])
   })
 
   it('says a single break taken in the singular', async () => {
@@ -171,7 +178,58 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
       { time: '2026-10-20T09:59:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
     ])
-    expect(longBreakWindowText({ logFilePath }))
-      .toEqual(['1 minute since your last break', 'Today: 1 break taken · 0 postponed'])
+    expect(longBreakWindowText({ logFilePath, focusLogPath }))
+      .toEqual(['1 minute since your last break', 'Today: 1 break taken · 0 postponed', noFocusLog])
+  })
+})
+
+describe('long break window usage from the focus log', () => {
+  const startedAtEight = [{ time: '2026-10-20T08:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true }]
+
+  async function writeFocusLog (lines) {
+    await writeFile(focusLogPath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
+  }
+
+  function focus (clock, windowId, appId, title) {
+    return { time: `2026-10-20T${clock}.000+02:00`, event: 'focus', window_id: windowId, app_id: appId, title }
+  }
+
+  function event (clock, name) {
+    return { time: `2026-10-20T${clock}.000+02:00`, event: name }
+  }
+
+  it('adds active time to the today line and lists where it went, leaving idle, lock and suspend out', async () => {
+    await writeLog(startedAtEight)
+    await writeFocusLog([
+      focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      event('08:10:00', 'idle_start'),
+      event('08:20:00', 'idle_end'),
+      event('08:30:00', 'lock'),
+      event('08:40:00', 'unlock'),
+      event('08:50:00', 'suspend'),
+      event('09:00:00', 'resume'),
+      focus('09:20:00', 2, 'firefox.desktop', 'News')
+    ])
+    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual([
+      '120 minutes since you started',
+      'Today: 1h 30m active · 0 breaks taken · 0 postponed',
+      { entries: [{ name: 'Terminal', duration: '50m' }, { name: 'firefox', duration: '40m' }] }
+    ])
+  })
+
+  it('warns in place of the list when the focus log has nothing since the last break ended', async () => {
+    await writeLog([
+      ...startedAtEight,
+      { time: '2026-10-20T09:30:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
+    ])
+    await writeFocusLog([
+      focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      focus('09:12:00', 2, 'firefox.desktop', 'News')
+    ])
+    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual([
+      '30 minutes since your last break',
+      'Today: 1 break taken · 0 postponed',
+      { warning: 'No window data since 09:12. Is the focus-log extension running?' }
+    ])
   })
 })
