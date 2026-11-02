@@ -1,8 +1,15 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { padded } from './logLines.js'
 
-function padded (number, width = 2) {
-  return String(number).padStart(width, '0')
+// The event names and break types the break-log summary reads.
+export const breakLogEvents = {
+  start: 'start',
+  taken: 'taken',
+  postponed: 'postponed',
+  naturalBreakRestarted: 'natural_break_restarted',
+  awayBreak: 'away_break'
 }
+export const breakLogBreakTypes = { mini: 'mini' }
 
 // Local time as 2026-10-13T15:12:03.042+02:00, the format of the GNOME extension's
 // ~/.local/state/break-timer/focus.jsonl, so the two logs join on time.
@@ -60,7 +67,7 @@ export default class BreakLog {
   }
 
   recordTaken () {
-    this._appendBreakEvent({ event: 'taken' })
+    this._appendBreakEvent({ event: breakLogEvents.taken })
   }
 
   recordFinishedEarly () {
@@ -69,7 +76,7 @@ export default class BreakLog {
 
   // previousPostpones counts this break's postpones before this one.
   recordPostponed ({ previousPostpones }) {
-    this._appendBreakEvent({ event: 'postponed', previous_postpones: previousPostpones })
+    this._appendBreakEvent({ event: breakLogEvents.postponed, previous_postpones: previousPostpones })
   }
 
   // Only a skip that ends a showing popup is a way out of a break; the break it brings
@@ -86,7 +93,7 @@ export default class BreakLog {
     if (previousContents !== '' && !previousContents.endsWith('\n')) {
       appendFileSync(this.logFilePath, '\n')
     }
-    this._append({ event: 'start', previous_run_ended_cleanly: previousRunEndedCleanly(previousContents) })
+    this._append({ event: breakLogEvents.start, previous_run_ended_cleanly: previousRunEndedCleanly(previousContents) })
   }
 
   // millisecondsToNextBreak is null while paused or during a break.
@@ -124,7 +131,7 @@ export default class BreakLog {
   // cause is 'lock' or 'suspend', whichever started the time away.
   recordAwayBreak ({ awayMilliseconds, cause, scheduledBreakType }) {
     this._appendScheduleEvent({
-      event: 'away_break', away_seconds: Math.round(awayMilliseconds / 1000), cause
+      event: breakLogEvents.awayBreak, away_seconds: Math.round(awayMilliseconds / 1000), cause
     }, scheduledBreakType)
   }
 
@@ -134,7 +141,7 @@ export default class BreakLog {
   }
 
   recordNaturalBreakRestarted ({ idleMilliseconds }) {
-    this._append({ event: 'natural_break_restarted', idle_seconds: Math.round(idleMilliseconds / 1000) })
+    this._append({ event: breakLogEvents.naturalBreakRestarted, idle_seconds: Math.round(idleMilliseconds / 1000) })
   }
 
   // stretchly never clears for Do Not Disturb while a popup shows, so there is no shown break to report.

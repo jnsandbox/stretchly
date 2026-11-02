@@ -32,6 +32,7 @@ import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
 import AwayBreaks from './utils/awayBreaks.js'
+import { longBreakWarning, longBreakWindowText } from './utils/breakLogSummary.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -72,7 +73,6 @@ nativeTheme.on('updated', function theThemeHasChanged () {
 })
 
 let microbreakIdeas
-let breakIdeas
 let breakPlanner
 let breakLog = null
 let appIcon = null
@@ -727,7 +727,12 @@ function startMicrobreakNotification () {
 }
 
 function startBreakNotification () {
-  showNotification(i18next.t('main.breakIn', { seconds: settings.get('breakNotificationInterval') / 1000 }))
+  const leadMilliseconds = settings.get('breakNotificationInterval')
+  showNotification(longBreakWarning({
+    leadMilliseconds,
+    secondsText: i18next.t('main.breakIn', { seconds: leadMilliseconds / 1000 }),
+    logFilePath: breakLog.logFilePath
+  }))
   log.info('Stretchly: showing Long break notification')
   breakPlanner.nextBreakAfterNotification()
   updateTray()
@@ -940,8 +945,9 @@ function startBreak ({ startedEarly = false } = {}) {
   breakWins = []
   breakLog.noteBreakShown({ breakType: 'long', startedEarly })
 
-  const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
-  const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
+  const { headline, todayLine, usage } = longBreakWindowText({ logFilePath: breakLog.logFilePath })
+  const windowText = [headline, todayLine]
+  const idea = nextIdea ? (nextIdea.map((val, index) => val || windowText[index])) : windowText
   nextIdea = null
 
   if (!settings.get('silentNotifications')) {
@@ -975,7 +981,7 @@ function startBreak ({ startedEarly = false } = {}) {
     }
     return [idea, startTime, breakDuration, strictMode,
       postponable, postponableDurationPercent,
-      calculateBackgroundColor(settings.get('mainColor')), danger, settings.get('breakHealthMode')]
+      calculateBackgroundColor(settings.get('mainColor')), danger, settings.get('breakHealthMode'), usage]
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
@@ -1238,10 +1244,8 @@ function calculateBackgroundColor (color) {
 }
 
 function loadIdeas () {
-  let longBreakIdeasData
   let miniBreakIdeasData
   if (settings.get('useIdeasFromSettings')) {
-    longBreakIdeasData = settings.get('breakIdeas')
     miniBreakIdeasData = settings.get('microbreakIdeas')
     log.info('Stretchly: loading custom break ideas from preferences file')
   } else {
@@ -1251,16 +1255,9 @@ function loadIdeas () {
       .map((item) => {
         return { data: i18next.t(`miniBreakIdeas.${item}.text`), enabled: true }
       })
-
-    longBreakIdeasData = Object.keys(t('longBreakIdeas',
-      { returnObjects: true }))
-      .map((item) => {
-        return { data: [i18next.t(`longBreakIdeas.${item}.title`), i18next.t(`longBreakIdeas.${item}.text`)], enabled: true }
-      })
     log.info('Stretchly: loading default break ideas')
   }
 
-  breakIdeas = new IdeasLoader(longBreakIdeasData).ideas()
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 

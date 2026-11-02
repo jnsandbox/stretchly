@@ -132,6 +132,10 @@ When you run *Stretchly* for the first time, you are presented with a Welcome wi
 
 *Stretchly* itself lives in your tray, only displaying a reminder window from time to time, which contains an idea for a break.
 
+A Long break shows no idea. Its window says how long since your last real break, such as `52 minutes since your last break`, counted as in the Long break notification. Below that is a line with today's active time and breaks, such as `Today: 4h 10m active · 3 breaks taken · 2 postponed`. The breaks are every real break and every press of Postpone since midnight, read from the break log so a restart of Stretchly keeps them.
+
+Active time and the list under it come from the focus log that the GNOME focus-log extension writes to `~/.local/state/break-timer/focus.jsonl`. Active time is time a window had focus while you were not idle, locked or suspended. The list shows the 5 entries with the most active time today, and the rest as one `Other` line. An app is one entry, named as in its desktop file, except that VS Code is split by workspace (`VS Code · break_timer`) and Brave by page: a page with 20 minutes or more today is its own entry, and the rest is `Brave · other tabs`. When the focus log has nothing since your last real break, or does not exist, the window says so in place of the list, and the today line leaves out active time. It says `No window data today. Is the focus-log extension running?` when the log has nothing since midnight or does not exist, and `No window data since 09:12. Is the focus-log extension running?` when it stopped after midnight but before your last real break, or before Stretchly started if there was none.
+
 <img src="minibreak.png" height="340">
 
 By default, there is a 20 second Mini break every 10 minutes and a 5 minute Long break every 30 minutes (after 2 Mini breaks).
@@ -214,7 +218,7 @@ Here are the preferences editable via the app. If values in the app does not sui
 - `longBreakAudio` - sound theme name (for Long breaks)
 - `miniBreakAudio` - sound theme name (for Mini breaks)
 - `fullscreen` - show breaks in fullscreen mode
-- `ideas` - show break ideas
+- `ideas` - show break ideas (Mini breaks only)
 - `naturalBreaks` - monitor idle time
 - `allScreens` - show breaks on all screens
 - `language` - language
@@ -225,7 +229,7 @@ Here are the preferences editable via the app. If values in the app does not sui
 - `checkNewVersion` - check for new versions
 
 #### Editing break ideas
-In the preferences file, change `useIdeasFromSettings: false,` to `useIdeasFromSettings: true,` and edit `breakIdeas` and `microbreakIdeas`.
+In the preferences file, change `useIdeasFromSettings: false,` to `useIdeasFromSettings: true,` and edit `breakIdeas` and `microbreakIdeas`. Long breaks show no ideas, so `breakIdeas` is not used.
 
 Note that when a new *Stretchly* version with new break ideas is out, your custom ideas will not be overwritten. You can reset break ideas to the latest defaults when you "Restore defaults" from Preferences window.
 
@@ -269,6 +273,8 @@ Stretchly sanitizes all HTML to keep break windows secure by removing any unsupp
 
 #### Editing break notification interval [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, change `breakNotificationInterval: 30000,` to whatever value you want. 30000 is 30 seconds. Same goes for Mini breaks.
+
+The Long break notification also says how long since your last real break, such as `Long break in 2 minutes. 53 minutes since your last break.` A Long break run to its full length, a natural break and a long enough Suspend/Lock count as real breaks; with none since Stretchly started, it says `since you started`. A notification interval of whole minutes is said in minutes.
 
 #### Editing postpone functionality [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, you can edit `microbreakPostpone` and `breakPostpone` to enable or disable the ability to postpone breaks, `microbreakPostponeTime` and `breakPostponeTime` to change the postpone time in milliseconds, `microbreakPostponesLimit` and `breakPostponesLimit` to change the number of allowed postpones per break, and finally, `microbreakPostponableDurationPercent` and `breakPostponableDurationPercent` to change the percentage of the break during which the user can postpone it.
