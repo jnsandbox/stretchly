@@ -132,6 +132,8 @@ When you run *Stretchly* for the first time, you are presented with a Welcome wi
 
 *Stretchly* itself lives in your tray, only displaying a reminder window from time to time, which contains an idea for a break.
 
+A Long break shows no idea. Its window says how long since your last real break, such as `52 minutes since your last break`, counted as in the Long break notification. Below that is a line with today's breaks, such as `Today: 3 breaks taken · 2 postponed`: every real break and every press of Postpone since midnight, read from the break log so a restart of Stretchly keeps them.
+
 <img src="minibreak.png" height="340">
 
 By default, there is a 20 second Mini break every 10 minutes and a 5 minute Long break every 30 minutes (after 2 Mini breaks).
@@ -214,7 +216,7 @@ Here are the preferences editable via the app. If values in the app does not sui
 - `longBreakAudio` - sound theme name (for Long breaks)
 - `miniBreakAudio` - sound theme name (for Mini breaks)
 - `fullscreen` - show breaks in fullscreen mode
-- `ideas` - show break ideas
+- `ideas` - show break ideas (Mini breaks only)
 - `naturalBreaks` - monitor idle time
 - `allScreens` - show breaks on all screens
 - `language` - language
@@ -225,7 +227,7 @@ Here are the preferences editable via the app. If values in the app does not sui
 - `checkNewVersion` - check for new versions
 
 #### Editing break ideas
-In the preferences file, change `useIdeasFromSettings: false,` to `useIdeasFromSettings: true,` and edit `breakIdeas` and `microbreakIdeas`.
+In the preferences file, change `useIdeasFromSettings: false,` to `useIdeasFromSettings: true,` and edit `breakIdeas` and `microbreakIdeas`. Long breaks show no ideas, so `breakIdeas` is not used.
 
 Note that when a new *Stretchly* version with new break ideas is out, your custom ideas will not be overwritten. You can reset break ideas to the latest defaults when you "Restore defaults" from Preferences window.
 

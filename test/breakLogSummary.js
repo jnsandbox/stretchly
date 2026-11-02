@@ -3,7 +3,7 @@ import { join } from 'path'
 import { tmpdir } from 'node:os'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import log from 'electron-log/main.js'
-import { longBreakWarning } from '../app/utils/timeSinceLastBreak'
+import { longBreakWarning, longBreakWindowText } from '../app/utils/breakLogSummary'
 
 vi.mock('electron-log/main.js', () => ({ default: { warn: vi.fn() } }))
 
@@ -11,10 +11,27 @@ process.env.TZ = 'Europe/Amsterdam'
 
 const twoMinutes = 120000
 
-describe('long break warning', () => {
-  let logFolder = null
-  let logFilePath = null
+let logFolder = null
+let logFilePath = null
 
+async function writeLog (lines) {
+  await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
+}
+
+beforeEach(async () => {
+  logFolder = await mkdtemp(join(tmpdir(), 'stretchly-break-log-summary-'))
+  logFilePath = join(logFolder, 'breaks.jsonl')
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
+})
+
+afterEach(async () => {
+  vi.useRealTimers()
+  vi.clearAllMocks()
+  await rm(logFolder, { recursive: true, force: true })
+})
+
+describe('long break warning', () => {
   // secondsText stands in for stretchly's own translated lead-time text.
   function warning (leadMilliseconds = twoMinutes) {
     return longBreakWarning({
@@ -23,23 +40,6 @@ describe('long break warning', () => {
       logFilePath
     })
   }
-
-  async function writeLog (lines) {
-    await writeFile(logFilePath, lines.map(line => JSON.stringify(line)).join('\n') + '\n')
-  }
-
-  beforeEach(async () => {
-    logFolder = await mkdtemp(join(tmpdir(), 'stretchly-since-last-break-'))
-    logFilePath = join(logFolder, 'breaks.jsonl')
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-10-20T10:00:30.000+02:00'))
-  })
-
-  afterEach(async () => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
-    await rm(logFolder, { recursive: true, force: true })
-  })
 
   it('counts from a long break run to its full length', async () => {
     await writeLog([
@@ -134,5 +134,44 @@ describe('long break warning', () => {
       '{"time":"2026-10-20T09:07:00.000+02:00","event":"tak\n')
     expect(warning()).toBe('Long break in 2 minutes. 120 minutes since you started.')
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('cannot read break log line 2'))
+  })
+})
+
+describe('long break window text', () => {
+  it('heads with the time since the last break and counts today\'s breaks across a restart', async () => {
+    await writeLog([
+      { time: '2026-10-19T17:00:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 },
+      { time: '2026-10-19T17:10:00.000+02:00', event: 'postponed', previous_postpones: 0, break_type: 'long', seconds_shown: 3 },
+      { time: '2026-10-20T08:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
+      { time: '2026-10-20T08:20:00.000+02:00', event: 'natural_break_restarted', idle_seconds: 400 },
+      { time: '2026-10-20T08:30:00.000+02:00', event: 'quit', minutes_to_next_break: 25 },
+      { time: '2026-10-20T08:40:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
+      { time: '2026-10-20T09:00:00.000+02:00', event: 'away_break', away_seconds: 600, cause: 'lock', break_type: 'long' },
+      { time: '2026-10-20T09:08:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
+    ])
+    expect(longBreakWindowText({ logFilePath }))
+      .toEqual(['52 minutes since your last break', 'Today: 3 breaks taken · 0 postponed'])
+  })
+
+  it('counts every press of postpone, and says since you started before any break', async () => {
+    await writeLog([
+      { time: '2026-10-20T09:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
+      { time: '2026-10-20T09:20:00.000+02:00', event: 'taken', break_type: 'mini', seconds_shown: 20 },
+      { time: '2026-10-20T09:30:00.000+02:00', event: 'paused', pause_minutes: 10, break_type: 'long' },
+      { time: '2026-10-20T09:40:00.000+02:00', event: 'resumed', paused_minutes: 10 },
+      { time: '2026-10-20T09:50:00.000+02:00', event: 'postponed', previous_postpones: 0, break_type: 'long', seconds_shown: 3 },
+      { time: '2026-10-20T09:55:00.000+02:00', event: 'postponed', previous_postpones: 1, break_type: 'long', seconds_shown: 4 }
+    ])
+    expect(longBreakWindowText({ logFilePath }))
+      .toEqual(['60 minutes since you started', 'Today: 0 breaks taken · 2 postponed'])
+  })
+
+  it('says a single break taken in the singular', async () => {
+    await writeLog([
+      { time: '2026-10-20T09:00:00.000+02:00', event: 'start', previous_run_ended_cleanly: true },
+      { time: '2026-10-20T09:59:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
+    ])
+    expect(longBreakWindowText({ logFilePath }))
+      .toEqual(['1 minute since your last break', 'Today: 1 break taken · 0 postponed'])
   })
 })

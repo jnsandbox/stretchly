@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 export const breakLogEvents = {
   start: 'start',
   taken: 'taken',
+  postponed: 'postponed',
   naturalBreakRestarted: 'natural_break_restarted',
   awayBreak: 'away_break'
 }
@@ -78,7 +79,7 @@ export default class BreakLog {
 
   // previousPostpones counts this break's postpones before this one.
   recordPostponed ({ previousPostpones }) {
-    this._appendBreakEvent({ event: 'postponed', previous_postpones: previousPostpones })
+    this._appendBreakEvent({ event: breakLogEvents.postponed, previous_postpones: previousPostpones })
   }
 
   // Only a skip that ends a showing popup is a way out of a break; the break it brings
