@@ -39,13 +39,40 @@ function isRealBreak (line) {
 // start when no real break has ended since. Returns { minutes, sinceStart }, or null
 // when the log holds no start line.
 export function readTimeSinceLastBreak (logFilePath) {
-  const lines = parsedLines(logFilePath)
+  return timeSinceLastBreak(parsedLines(logFilePath))
+}
+
+function timeSinceLastBreak (lines) {
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index]
     if (isRealBreak(line)) return { minutes: minutesSince(line.time), sinceStart: false }
     if (line.event === breakLogEvents.start) return { minutes: minutesSince(line.time), sinceStart: true }
   }
   return null
+}
+
+function sinceLastBreakText ({ minutes, sinceStart }) {
+  return `${minutesText(minutes)} ${sinceStart ? 'since you started' : 'since your last break'}`
+}
+
+function startOfToday () {
+  const midnight = new Date(Date.now())
+  midnight.setHours(0, 0, 0, 0)
+  return midnight.getTime()
+}
+
+// The long break window's title and text, in place of a break idea. The counts read
+// every line since local midnight, so a restart of stretchly keeps them.
+export function longBreakWindowText ({ logFilePath }) {
+  const lines = parsedLines(logFilePath)
+  const sinceLastBreak = timeSinceLastBreak(lines)
+  const todaysLines = lines.filter(line => new Date(line.time).getTime() >= startOfToday())
+  const breaksTaken = todaysLines.filter(isRealBreak).length
+  const postponed = todaysLines.filter(line => line.event === breakLogEvents.postponed).length
+  return [
+    sinceLastBreak === null ? '' : sinceLastBreakText(sinceLastBreak),
+    `Today: ${breaksTaken === 1 ? '1 break' : `${breaksTaken} breaks`} taken · ${postponed} postponed`
+  ]
 }
 
 // secondsText is stretchly's own lead-time text, kept when the lead time is not whole minutes.
@@ -55,6 +82,5 @@ export function longBreakWarning ({ leadMilliseconds, secondsText, logFilePath }
     : `${secondsText}.`
   const timeSinceLastBreak = readTimeSinceLastBreak(logFilePath)
   if (timeSinceLastBreak === null) return firstSentence
-  const since = timeSinceLastBreak.sinceStart ? 'since you started' : 'since your last break'
-  return `${firstSentence} ${minutesText(timeSinceLastBreak.minutes)} ${since}.`
+  return `${firstSentence} ${sinceLastBreakText(timeSinceLastBreak)}.`
 }

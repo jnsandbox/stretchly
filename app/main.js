@@ -32,7 +32,7 @@ import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakLog from './utils/breakLog.js'
 import AwayBreaks from './utils/awayBreaks.js'
-import { longBreakWarning } from './utils/timeSinceLastBreak.js'
+import { longBreakWarning, longBreakWindowText } from './utils/timeSinceLastBreak.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -73,7 +73,6 @@ nativeTheme.on('updated', function theThemeHasChanged () {
 })
 
 let microbreakIdeas
-let breakIdeas
 let breakPlanner
 let breakLog = null
 let appIcon = null
@@ -953,7 +952,8 @@ function startBreak ({ startedEarly = false } = {}) {
   breakWins = []
   breakLog.noteBreakShown({ breakType: 'long', startedEarly })
 
-  const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
+  // Long breaks show the user's day in place of a break idea; mini breaks keep theirs.
+  const defaultNextIdea = longBreakWindowText({ logFilePath: breakLog.logFilePath })
   const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
   nextIdea = null
 
@@ -1251,10 +1251,8 @@ function calculateBackgroundColor (color) {
 }
 
 function loadIdeas () {
-  let longBreakIdeasData
   let miniBreakIdeasData
   if (settings.get('useIdeasFromSettings')) {
-    longBreakIdeasData = settings.get('breakIdeas')
     miniBreakIdeasData = settings.get('microbreakIdeas')
     log.info('Stretchly: loading custom break ideas from preferences file')
   } else {
@@ -1264,16 +1262,9 @@ function loadIdeas () {
       .map((item) => {
         return { data: i18next.t(`miniBreakIdeas.${item}.text`), enabled: true }
       })
-
-    longBreakIdeasData = Object.keys(t('longBreakIdeas',
-      { returnObjects: true }))
-      .map((item) => {
-        return { data: [i18next.t(`longBreakIdeas.${item}.title`), i18next.t(`longBreakIdeas.${item}.text`)], enabled: true }
-      })
     log.info('Stretchly: loading default break ideas')
   }
 
-  breakIdeas = new IdeasLoader(longBreakIdeasData).ideas()
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 
