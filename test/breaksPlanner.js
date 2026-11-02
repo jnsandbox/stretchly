@@ -102,14 +102,15 @@ describe('breaksPlanner', () => {
     expect(breakStarts).toEqual([['mini', false]])
   })
 
-  it('never starts a break skipped ahead to with a wait when a pause comes first', () => {
+  it('starts a break skipped ahead to with a wait as started early when a pause delays it', () => {
     const breakStarts = recordBreakStarts()
-    breaksPlanner.settings.set('microbreakNotification', false)
     breaksPlanner.skipToMicrobreak(600000)
     breaksPlanner.pause(300000)
     breaksPlanner.resume()
-    vi.advanceTimersByTime(breaksPlanner.settings.get('microbreakInterval'))
-    expect(breakStarts).toEqual([['mini', false]])
+    vi.advanceTimersByTime(599999)
+    expect(breakStarts).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(breakStarts).toEqual([['mini', true]])
   })
 
   it('never starts a break skipped ahead to with a wait when a natural break comes first', () => {
@@ -182,5 +183,92 @@ describe('breaksPlanner', () => {
     await vi.advanceTimersByTimeAsync(1800000)
     expect(doNotDisturbStatesAtResume).toEqual([false])
     breaksPlanner.dndManager.stop()
+  })
+
+  describe('when a pause ends', () => {
+    const oneMinute = 60 * 1000
+    const warningMilliseconds = 2 * oneMinute
+    let startedAt = null
+    let breakEvents = null
+
+    // Wires the planner as the main process does, recording each warning and break start
+    // with the minutes since the test began.
+    beforeEach(() => {
+      breaksPlanner.settings.set('microbreakNotificationInterval', warningMilliseconds)
+      breaksPlanner.nextBreak()
+      startedAt = Date.now()
+      breakEvents = []
+      const minutesSinceStart = () => (Date.now() - startedAt) / oneMinute
+      breaksPlanner.on('startMicrobreakNotification', () => {
+        breakEvents.push(['warning', minutesSinceStart()])
+        breaksPlanner.nextBreakAfterNotification()
+      })
+      breaksPlanner.on('startMicrobreak', () => {
+        breakEvents.push(['mini', minutesSinceStart()])
+        breaksPlanner.emit('microbreakStarted', true)
+      })
+      breaksPlanner.on('resumeBreaks', () => breaksPlanner.resume())
+    })
+
+    it('brings the break that was coming as many minutes after the pause as were left before it', () => {
+      vi.advanceTimersByTime(5 * oneMinute)
+      breaksPlanner.pause(20 * oneMinute)
+      vi.advanceTimersByTime(30 * oneMinute)
+      expect(breakEvents).toEqual([['warning', 28], ['mini', 30]])
+    })
+
+    it('brings the break that was coming the same way after a Resume', () => {
+      vi.advanceTimersByTime(5 * oneMinute)
+      breaksPlanner.pause(30 * oneMinute)
+      vi.advanceTimersByTime(5 * oneMinute)
+      breaksPlanner.resume()
+      vi.advanceTimersByTime(10 * oneMinute)
+      expect(breakEvents).toEqual([['warning', 13], ['mini', 15]])
+    })
+
+    it('brings the break without a second warning when the warning came before the pause', () => {
+      vi.advanceTimersByTime(9 * oneMinute)
+      breaksPlanner.pause(10 * oneMinute)
+      vi.advanceTimersByTime(15 * oneMinute)
+      expect(breakEvents).toEqual([['warning', 8], ['mini', 20]])
+    })
+
+    it('shows a break that was showing at the pause again, with the postpones it had', () => {
+      vi.advanceTimersByTime(10 * oneMinute)
+      breaksPlanner.postponeCurrentBreak()
+      vi.advanceTimersByTime(2 * oneMinute)
+      breaksPlanner.pause(10 * oneMinute)
+      vi.advanceTimersByTime(10 * oneMinute - 1)
+      expect(breakEvents).toEqual([['warning', 8], ['mini', 10], ['mini', 12]])
+      vi.advanceTimersByTime(2)
+      const [breakType, minute] = breakEvents.at(-1)
+      expect(breakType).toBe('mini')
+      expect(minute).toBeCloseTo(22, 3)
+      expect(breaksPlanner.postponesNumber).toBe(1)
+      expect(breaksPlanner.postponesOfCurrentBreak).toBe(1)
+    })
+
+    it('keeps the point the first pause saved when paused again while paused', () => {
+      vi.advanceTimersByTime(5 * oneMinute)
+      breaksPlanner.pause(10 * oneMinute)
+      vi.advanceTimersByTime(5 * oneMinute)
+      breaksPlanner.pause(10 * oneMinute)
+      vi.advanceTimersByTime(15 * oneMinute)
+      expect(breakEvents).toEqual([['warning', 23], ['mini', 25]])
+    })
+
+    it('drops the saved break when Do Not Disturb is on at the end of the pause', async () => {
+      breaksPlanner.settings.set('monitorDnd', true)
+      vi.spyOn(breaksPlanner.dndManager, '_doNotDisturb').mockResolvedValue(true)
+      await vi.advanceTimersByTimeAsync(10 * oneMinute)
+      breaksPlanner.pause(10 * oneMinute)
+      await vi.advanceTimersByTimeAsync(10 * oneMinute + oneMinute)
+      expect(breakEvents).toEqual([['warning', 8], ['mini', 10]])
+      expect(breaksPlanner.dndManager.isOnDnd).toBe(true)
+      breaksPlanner.dndManager._doNotDisturb.mockResolvedValue(false)
+      await vi.advanceTimersByTimeAsync(breaksPlanner.settings.get('monitorDndCheckInterval'))
+      expect(breaksPlanner.timeToNextBreak).toBe(breaksPlanner.settings.get('microbreakInterval'))
+      breaksPlanner.dndManager.stop()
+    })
   })
 })

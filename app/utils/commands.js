@@ -1,5 +1,5 @@
-import { UntilMorning } from './untilMorning.js'
 import log from 'electron-log/main.js'
+import { longestPauseMilliseconds } from './pauseMenu.js'
 
 const allOptions = {
   title: {
@@ -29,7 +29,7 @@ const allOptions = {
   duration: {
     long: '--duration',
     short: '-d',
-    description: 'Specify duration for pausing breaks (Pause only) [indefinitely|until-morning|HHhMMm|HHh|MMm|MM]',
+    description: 'Specify duration for pausing breaks, at most 30 minutes (Pause only) [HHhMMm|HHh|MMm|MM]',
     withValue: true
   }
 }
@@ -45,14 +45,11 @@ const allCommands = {
     description: 'Show location of logs file'
   },
   pause: {
-    description: 'Pause breaks',
+    description: 'Pause breaks for at most 30 minutes',
     options: [allOptions.duration]
   },
   resume: {
     description: 'Resume from a pause'
-  },
-  toggle: {
-    description: 'Pause/unpause breaks'
   },
   mini: {
     description: 'Skip to the Mini break, customize it',
@@ -68,20 +65,12 @@ const allCommands = {
 }
 
 const allExamples = [{
-  cmd: 'stretchly pause',
-  description: 'Pause breaks indefinitely'
+  cmd: 'stretchly pause -d 20',
+  description: 'Pause breaks for twenty minutes'
 },
 {
-  cmd: 'stretchly pause -d 60',
-  description: 'Pause breaks for one hour'
-},
-{
-  cmd: 'stretchly pause -d 1h',
-  description: 'Pause breaks for one hour'
-},
-{
-  cmd: 'stretchly pause -d 1h20m',
-  description: 'Pause breaks for one hour and twenty minutes'
+  cmd: 'stretchly pause -d 30m',
+  description: 'Pause breaks for thirty minutes'
 },
 {
   cmd: 'stretchly mini -T "Stretch up!"',
@@ -190,21 +179,22 @@ class Command {
     }
   }
 
-  durationToMs (settings) {
+  durationToMs () {
     if (!this.options.duration) {
-      return 1
+      return -1
     }
 
-    switch (this.options.duration) {
-      case 'indefinitely':
-        return 1
+    return parseDuration(this.options.duration)
+  }
 
-      case 'until-morning':
-        return new UntilMorning(settings).msToSunrise()
-
-      default:
-        return parseDuration(this.options.duration)
-    }
+  // Why the pause command is refused, or null when it may pause.
+  pauseRefusal () {
+    const duration = this.options.duration
+    if (!duration) return 'no duration given'
+    const milliseconds = parseDuration(duration)
+    if (milliseconds === -1) return `'${duration}' is not a duration`
+    if (milliseconds > longestPauseMilliseconds) return `'${duration}' is longer than 30 minutes`
+    return null
   }
 
   waitToMs () {

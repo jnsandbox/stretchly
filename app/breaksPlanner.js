@@ -17,6 +17,8 @@ class BreaksPlanner extends EventEmitter {
     this.postponesOfCurrentBreak = 0
     this.scheduler = null
     this.isPaused = false
+    // Where the schedule stood when a pause began, to pick up from when it ends.
+    this.pointToResumeFrom = null
     this.pollersSuspended = false
     this.areSchedulesHeld = false
     this.gnomeSession = new GnomeSession()
@@ -227,32 +229,87 @@ class BreaksPlanner extends EventEmitter {
     this.breakNumber = 0
     this.postponesNumber = 0
     this.postponesOfCurrentBreak = 0
+    this.pointToResumeFrom = null
   }
 
   pause (milliseconds) {
+    const pointToResumeFrom = this.isPaused ? this.pointToResumeFrom : this._currentPoint()
     this.clear()
+    this.pointToResumeFrom = pointToResumeFrom
     this.isPaused = true
     this.pollersSuspended = true
     this.naturalBreaksManager.stop()
     this.dndManager.stop()
     this.appExclusionsManager.stop()
-    if (milliseconds !== 1) {
-      this.scheduler = new Scheduler(() => this.emit('resumeBreaks'), milliseconds, 'resumeBreaks')
-      this._planScheduler()
-    }
+    this.scheduler = new Scheduler(() => this.emit('resumeBreaks'), milliseconds, 'resumeBreaks')
+    this._planScheduler()
+  }
+
+  // Time away that counts as a break during a pause leaves nothing to pick up from.
+  startOverAfterPause () {
+    this.pointToResumeFrom = null
+  }
+
+  // 'mini' or 'long' for the break the pause will pick up from; null when it starts over.
+  get pausedBreakType () {
+    return this.pointToResumeFrom?.breakType ?? null
   }
 
   resume () {
     this.scheduler.cancel()
     this.isPaused = false
     this.appExclusionsManager.reset()
-    this.nextBreak()
+    const pointToResumeFrom = this.pointToResumeFrom
+    this.pointToResumeFrom = null
+    if (pointToResumeFrom) {
+      this._resumeFrom(pointToResumeFrom)
+    } else {
+      this.nextBreak()
+    }
     if (this.pollersSuspended) {
       this.pollersSuspended = false
       if (this.settings.get('naturalBreaks')) this.naturalBreaksManager.start()
       if (this.settings.get('monitorDnd')) this.dndManager.start()
       this.appExclusionsManager.reinitialize(this.settings)
     }
+  }
+
+  // A showing break is kept as one due at once, so it shows again with its postpones.
+  _currentPoint () {
+    const breakType = this.plannedBreakType
+    if (breakType === null) return null
+    const counts = {
+      breakType,
+      breakNumber: this.breakNumber,
+      postponesNumber: this.postponesNumber,
+      postponesOfCurrentBreak: this.postponesOfCurrentBreak
+    }
+    const { reference, func } = this.scheduler
+    if (reference === 'finishMicrobreak' || reference === 'finishBreak') {
+      const eventName = reference === 'finishMicrobreak' ? 'startMicrobreak' : 'startBreak'
+      return { ...counts, reference: eventName, func: () => this.emit(eventName), timeLeft: 0 }
+    }
+    return { ...counts, reference, func, timeLeft: Math.max(this.scheduler.timeLeft, 0) }
+  }
+
+  _resumeFrom ({ breakNumber, postponesNumber, postponesOfCurrentBreak, reference, func, timeLeft }) {
+    this.breakNumber = breakNumber
+    this.postponesNumber = postponesNumber
+    this.postponesOfCurrentBreak = postponesOfCurrentBreak
+    this.scheduler = new Scheduler(func, Math.max(timeLeft, this._firstPollerAnswerMilliseconds), reference)
+    this._planScheduler()
+  }
+
+  // Do Not Disturb and app exclusions restart with the pause's end and first check one
+  // interval later; a break due sooner waits a second interval for that answer.
+  get _firstPollerAnswerMilliseconds () {
+    if (!this.pollersSuspended) return 0
+    const checkIntervals = [0]
+    if (this.settings.get('monitorDnd')) checkIntervals.push(this.settings.get('monitorDndCheckInterval'))
+    if (this.settings.get('appExclusions').some(exclusion => exclusion.active)) {
+      checkIntervals.push(this.settings.get('appExclusionsCheckInterval'))
+    }
+    return 2 * Math.max(...checkIntervals)
   }
 
   // While held, the current schedule and every one planned after it stop their timers

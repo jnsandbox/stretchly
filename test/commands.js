@@ -1,4 +1,5 @@
 import 'chai/register-should'
+import { expect } from 'vitest'
 import Command from '../app/utils/commands'
 
 describe('commands', () => {
@@ -46,6 +47,11 @@ describe('commands', () => {
 
   it('does not support reset, so breaks cannot be reset from the command line', () => {
     const cmd = new Command(['reset'], '1.2.3')
+    cmd.hasSupportedCommand.should.be.equal(false)
+  })
+
+  it('does not support toggle, so breaks cannot be paused indefinitely from the command line', () => {
+    const cmd = new Command(['toggle'], '1.2.3')
     cmd.hasSupportedCommand.should.be.equal(false)
   })
 
@@ -184,5 +190,29 @@ describe('commands', () => {
     const input = ['long', '-w', '10i20k']
     const cmd = new Command(input, '1.2.3')
     cmd.waitToMs(null).should.be.equal(-1)
+  })
+
+  describe('pauseRefusal', () => {
+    it('accepts a pause of 30 minutes or less', () => {
+      for (const duration of ['10', '20m', '30', '0h30m']) {
+        expect(new Command(['pause', '-d', duration], '1.2.3').pauseRefusal()).toBe(null)
+      }
+    })
+
+    it('refuses a pause without a duration', () => {
+      expect(new Command(['pause'], '1.2.3').pauseRefusal()).toMatch('no duration given')
+    })
+
+    it('refuses an indefinite pause and a pause until morning', () => {
+      for (const duration of ['indefinitely', 'until-morning']) {
+        expect(new Command(['pause', '-d', duration], '1.2.3').pauseRefusal()).toMatch(`'${duration}' is not a duration`)
+      }
+    })
+
+    it('refuses a pause longer than 30 minutes', () => {
+      for (const duration of ['31', '1h', '0h31m']) {
+        expect(new Command(['pause', '-d', duration], '1.2.3').pauseRefusal()).toMatch(`'${duration}' is longer than 30 minutes`)
+      }
+    })
   })
 })

@@ -160,6 +160,42 @@ describe('AwayBreaks', () => {
     ])
   })
 
+  describe('during a pause', () => {
+    beforeEach(async () => {
+      await vi.advanceTimersByTimeAsync(3 * oneMinute)
+      breaksPlanner.pause(30 * oneMinute)
+    })
+
+    it('starts the schedule over at the end of the pause after a lock as long as the reset time', async () => {
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(resetTime)
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      expect(breaksPlanner.isPaused).toBe(true)
+      breaksPlanner.resume()
+      expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval)
+      expect(breakLogLines()).toEqual([
+        { event: 'away_break', away_seconds: resetTime / 1000, cause: 'lock', break_type: 'mini' }
+      ])
+    })
+
+    it('starts the schedule over at the end of the pause after a suspend as long as the reset time', async () => {
+      powerMonitor.emit('suspend')
+      vi.setSystemTime(Date.now() + resetTime)
+      powerMonitor.emit('resume')
+      breaksPlanner.resume()
+      expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval)
+    })
+
+    it('keeps the countdown through the pause after a lock shorter than the reset time', async () => {
+      sessionBus.deliver(screenSaverActiveChanged(true))
+      await vi.advanceTimersByTimeAsync(resetTime - oneMinute)
+      sessionBus.deliver(screenSaverActiveChanged(false))
+      breaksPlanner.resume()
+      expect(breaksPlanner.timeToNextBreak).toBe(microbreakInterval - 3 * oneMinute)
+      expect(breakLogLines()).toEqual([])
+    })
+  })
+
   describe('with natural breaks on', () => {
     const checkInterval = defaultSettings.naturalBreaksCheckInterval
     let naturalBreakRestarts = 0

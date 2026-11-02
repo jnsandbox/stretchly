@@ -23,9 +23,9 @@ import {
 import IdeasLoader from './utils/ideasLoader.js'
 import BreaksPlanner from './breaksPlanner.js'
 import AppIcon from './utils/appIcon.js'
-import { UntilMorning } from './utils/untilMorning.js'
 import AutostartManager from './utils/autostartManager.js'
 import Command from './utils/commands.js'
+import { pauseSubmenu } from './utils/pauseMenu.js'
 import { registerBreakShortcuts } from './utils/breakShortcuts.js'
 import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
@@ -178,21 +178,14 @@ if (!gotTheLock) {
         if (breakPlanner.isPaused) resumeBreaks(false)
         break
 
-      case 'toggle':
-        log.info('Stretchly: toggle Breaks (requested by second instance)')
-        if (breakPlanner.isPaused) resumeBreaks(false)
-        else pauseBreaks(1)
-        break
-
       case 'pause': {
         log.info('Stretchly: pause Breaks (requested by second instance)')
-        const duration = cmd.durationToMs(settings)
-        // -1 indicates an invalid value
-        if (duration === -1) {
-          log.error('Stretchly: error when parsing duration to ms because of invalid value')
+        const refusal = cmd.pauseRefusal()
+        if (refusal) {
+          log.error(`Stretchly: not pausing breaks: ${refusal}`)
           return
         }
-        pauseBreaks(duration)
+        pauseBreaks(cmd.durationToMs())
         break
       }
 
@@ -1271,18 +1264,13 @@ function loadIdeas () {
   microbreakIdeas = new IdeasLoader(miniBreakIdeasData).ideas()
 }
 
-// milliseconds is 1 for an indefinite pause.
 function pauseBreaks (milliseconds) {
   breakLog.recordPaused({ scheduledBreakType: breakPlanner.plannedBreakType, pauseMilliseconds: milliseconds })
-  if (microbreakWins) {
-    increaseDanger(1)
-    finishMicrobreak(false)
-  }
-  if (breakWins) {
-    increaseDanger(2)
-    finishBreak(false)
-  }
+  if (microbreakWins) increaseDanger(1)
+  if (breakWins) increaseDanger(2)
+  // Pausing before the popup closes keeps the showing break to show again after the pause.
   breakPlanner.pause(milliseconds)
+  closeBreakPopup()
   log.info(`Stretchly: pausing breaks for ${milliseconds}ms`)
   updateTray()
 }
@@ -1455,47 +1443,7 @@ function getTrayMenuTemplate () {
   } else if (!(breakPlanner.dndManager.isOnDnd || breakPlanner.appExclusionsManager.isSchedulerCleared)) {
     trayMenu.push({
       label: i18next.t('main.pause'),
-      submenu: [
-        {
-          label: i18next.t('utils.minutes', { count: 30 }),
-          accelerator: settings.get('pauseBreaksFor30MinutesShortcut') || null,
-          click: function () {
-            pauseBreaks(1800 * 1000)
-          }
-        }, {
-          label: i18next.t('main.forHour'),
-          accelerator: settings.get('pauseBreaksFor1HourShortcut') || null,
-          click: function () {
-            pauseBreaks(3600 * 1000)
-          }
-        }, {
-          label: i18next.t('main.for2Hours'),
-          accelerator: settings.get('pauseBreaksFor2HoursShortcut') || null,
-          click: function () {
-            pauseBreaks(3600 * 2 * 1000)
-          }
-        }, {
-          label: i18next.t('main.for5Hours'),
-          accelerator: settings.get('pauseBreaksFor5HoursShortcut') || null,
-          click: function () {
-            pauseBreaks(3600 * 5 * 1000)
-          }
-        }, {
-          label: i18next.t('main.untilMorning'),
-          accelerator: settings.get('pauseBreaksUntilMorningShortcut') || null,
-          click: function () {
-            const untilMorning = new UntilMorning(settings).msToSunrise()
-            pauseBreaks(untilMorning)
-          }
-        }, {
-          type: 'separator'
-        }, {
-          label: i18next.t('main.indefinitely'),
-          click: function () {
-            pauseBreaks(1)
-          }
-        }
-      ]
+      submenu: pauseSubmenu({ settings, i18next, pauseBreaks })
     })
   }
 

@@ -1,38 +1,18 @@
-import { UntilMorning } from './untilMorning.js'
-
 // Keys are the names of shortcuts in the settings,
 // values are break pause intervals in milliseconds (or null if not applicable)
 const shortcuts = {
   pauseBreaksFor30MinutesShortcut: 30 * 60 * 1000,
-  pauseBreaksFor1HourShortcut: 3600 * 1000,
-  pauseBreaksFor2HoursShortcut: 2 * 3600 * 1000,
-  pauseBreaksFor5HoursShortcut: 5 * 3600 * 1000,
-  pauseBreaksUntilMorningShortcut: null,
-  pauseBreaksToggleShortcut: 1, // 1 means pause indefinitely
   skipToNextScheduledBreakShortcut: null,
   skipToNextMiniBreakShortcut: null,
   skipToNextLongBreakShortcut: null
 }
 
-function calculateInterval (name, settings) {
-  if (name === 'pauseBreaksUntilMorningShortcut') {
-    return new UntilMorning(settings).msToSunrise()
-  }
-
+function calculateInterval (name) {
   return shortcuts[name]
 }
 
 function onShortcut ({ name, settings, log, breakPlanner, functions }) {
   switch (name) {
-    case 'pauseBreaksToggleShortcut':
-      if (breakPlanner.isPaused) {
-        log.info('Stretchly: resuming breaks by shortcut')
-        functions.resumeBreaks(false)
-      } else {
-        log.info('Stretchly: pausing breaks by shortcut')
-        functions.pauseBreaks(1)
-      }
-      break
     case 'skipToNextScheduledBreakShortcut':
       log.info('Stretchly: skipping to next scheduled break by shortcut')
       if (breakPlanner._scheduledBreakType === 'break') {
@@ -51,7 +31,7 @@ function onShortcut ({ name, settings, log, breakPlanner, functions }) {
       break
     default: {
       log.info(`Stretchly: pausing breaks by shortcut (${name})`)
-      const interval = calculateInterval(name, settings)
+      const interval = calculateInterval(name)
       functions.pauseBreaks(interval)
       break
     }

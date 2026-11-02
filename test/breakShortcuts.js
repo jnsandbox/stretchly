@@ -8,28 +8,6 @@ describe('pauseBreaksShortcut', () => {
       const interval = calculateInterval('pauseBreaksFor30MinutesShortcut')
       expect(interval).toBe(30 * 60 * 1000)
     })
-
-    it('should return correct interval for pauseBreaksFor1HourShortcut', () => {
-      const interval = calculateInterval('pauseBreaksFor1HourShortcut')
-      expect(interval).toBe(3600 * 1000)
-    })
-
-    it('should return correct interval for pauseBreaksFor2HoursShortcut', () => {
-      const interval = calculateInterval('pauseBreaksFor2HoursShortcut')
-      expect(interval).toBe(2 * 3600 * 1000)
-    })
-
-    it('should return correct interval for pauseBreaksFor5HoursShortcut', () => {
-      const interval = calculateInterval('pauseBreaksFor5HoursShortcut')
-      expect(interval).toBe(5 * 3600 * 1000)
-    })
-
-    it('should return correct interval for pauseBreaksUntilMorningShortcut', () => {
-      const settings = { get: () => 6 }
-      const interval = calculateInterval('pauseBreaksUntilMorningShortcut', settings)
-      expect(interval).toBeGreaterThan(0)
-      expect(interval).toBeLessThan(24 * 60 * 60 * 1000)
-    })
   })
 
   describe('onShortcut', () => {
@@ -47,29 +25,6 @@ describe('pauseBreaksShortcut', () => {
 
       expect(pauseBreaks).toHaveBeenCalledWith(30 * 60 * 1000)
       expect(log.info).toHaveBeenCalledWith('Stretchly: pausing breaks by shortcut (pauseBreaksFor30MinutesShortcut)')
-    })
-
-    it('for pauseBreaksUntilMorningShortcut calls pauseBreaks with correct interval', () => {
-      const log = { info: vi.fn() }
-      const pauseBreaks = vi.fn()
-      const settings = { get: () => 6 }
-
-      onShortcut({
-        name: 'pauseBreaksUntilMorningShortcut',
-        settings,
-        breakPlanner: null,
-        functions: { pauseBreaks },
-        log
-      })
-
-      expect(pauseBreaks).toHaveBeenCalled()
-
-      // Check the interval parameter passed to pauseBreaks
-      const intervalExpected = calculateInterval('pauseBreaksUntilMorningShortcut', settings)
-      const intervalActual = pauseBreaks.mock.calls[0][0]
-
-      // expect interval to be within 10 seconds of expected value
-      expect(Math.abs(intervalActual - intervalExpected)).toBeLessThan(10 * 1000)
     })
 
     describe('skipToNextScheduledBreakShortcut', () => {
@@ -155,44 +110,6 @@ describe('pauseBreaksShortcut', () => {
         expect(pauseBreaks).not.toHaveBeenCalled()
       })
     })
-
-    describe('pauseBreaksToggleShortcut', () => {
-      it('pauses breaks indefinitely', () => {
-        const log = { info: vi.fn() }
-        const pauseBreaks = vi.fn()
-        const breakPlanner = { isPaused: false }
-
-        onShortcut({
-          name: 'pauseBreaksToggleShortcut',
-          settings: null,
-          breakPlanner,
-          functions: { pauseBreaks },
-          log
-        })
-
-        expect(pauseBreaks).toHaveBeenCalledWith(1)
-        expect(log.info).toHaveBeenCalledWith('Stretchly: pausing breaks by shortcut')
-      })
-
-      it('resumes breaks when they are paused', () => {
-        const log = { info: vi.fn() }
-        const resumeBreaks = vi.fn()
-        const pauseBreaks = vi.fn()
-        const breakPlanner = { isPaused: true }
-
-        onShortcut({
-          name: 'pauseBreaksToggleShortcut',
-          settings: null,
-          breakPlanner,
-          functions: { resumeBreaks, pauseBreaks },
-          log
-        })
-
-        expect(resumeBreaks).toHaveBeenCalledWith(false)
-        expect(pauseBreaks).not.toHaveBeenCalled()
-        expect(log.info).toHaveBeenCalledWith('Stretchly: resuming breaks by shortcut')
-      })
-    })
   })
 
   describe('setupBreak', () => {
@@ -244,14 +161,9 @@ describe('pauseBreaksShortcut', () => {
 
       const intervals = {
         pauseBreaksFor30MinutesShortcut: 0,
-        pauseBreaksFor1HourShortcut: 1,
-        pauseBreaksFor2HoursShortcut: 2,
-        pauseBreaksFor5HoursShortcut: 3,
-        pauseBreaksUntilMorningShortcut: 4,
-        pauseBreaksToggleShortcut: 5,
-        skipToNextScheduledBreakShortcut: 6,
-        skipToNextMiniBreakShortcut: 7,
-        skipToNextLongBreakShortcut: 8
+        skipToNextScheduledBreakShortcut: 1,
+        skipToNextMiniBreakShortcut: 2,
+        skipToNextLongBreakShortcut: 3
       }
 
       const settings = { get: vi.fn((name) => intervals[name]) }
@@ -267,18 +179,18 @@ describe('pauseBreaksShortcut', () => {
       // Check shortcut registration
       // ------------
 
-      expect(globalShortcut.register).toHaveBeenCalledTimes(9)
+      expect(globalShortcut.register).toHaveBeenCalledTimes(4)
 
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 4; i++) {
         expect(globalShortcut.register.mock.calls[i][0]).toBe(i)
       }
 
       // Check log
       // ------------
 
-      expect(log.info).toHaveBeenCalledTimes(9)
+      expect(log.info).toHaveBeenCalledTimes(4)
 
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 4; i++) {
         expect(log.info.mock.calls[i][0]).toMatch(`registration successful (${i})`)
       }
     })
@@ -288,6 +200,30 @@ describe('pauseBreaksShortcut', () => {
       const log = { info: vi.fn(), warn: vi.fn() }
 
       const settings = { get: vi.fn((name) => name === 'resetBreaksShortcut' ? 'key' : '') }
+
+      registerBreakShortcuts({
+        settings,
+        log,
+        globalShortcut,
+        breakPlanner: null,
+        functions: {}
+      })
+
+      expect(globalShortcut.register).not.toHaveBeenCalled()
+    })
+
+    it('registers no shortcut that pauses longer than 30 minutes or indefinitely', () => {
+      const globalShortcut = { register: vi.fn().mockReturnValue(true) }
+      const log = { info: vi.fn(), warn: vi.fn() }
+      const removedShortcuts = [
+        'pauseBreaksFor1HourShortcut',
+        'pauseBreaksFor2HoursShortcut',
+        'pauseBreaksFor5HoursShortcut',
+        'pauseBreaksUntilMorningShortcut',
+        'pauseBreaksToggleShortcut'
+      ]
+
+      const settings = { get: vi.fn((name) => removedShortcuts.includes(name) ? 'key' : '') }
 
       registerBreakShortcuts({
         settings,

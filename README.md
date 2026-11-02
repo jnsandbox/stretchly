@@ -270,15 +270,6 @@ Stretchly sanitizes all HTML to keep break windows secure by removing any unsupp
 #### Editing break notification interval [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, change `breakNotificationInterval: 30000,` to whatever value you want. 30000 is 30 seconds. Same goes for Mini breaks.
 
-#### Editing sunrise time to pause breaks until morning
-In the preferences file you can set the `morningHour` setting to pause until that hour today or the next day
-Otherwise, you can set `morningHour: "sunrise"` and set `posLatitude`, `posLongitude` in
-preferences to pause until the actual sunrise in your area.
-E.g. if you live in Boston you would set:
-`morningHour: "sunrise",`
-`posLatitude: 42.3,`
-`posLongitude: 71`
-
 #### Editing postpone functionality [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, you can edit `microbreakPostpone` and `breakPostpone` to enable or disable the ability to postpone breaks, `microbreakPostponeTime` and `breakPostponeTime` to change the postpone time in milliseconds, `microbreakPostponesLimit` and `breakPostponesLimit` to change the number of allowed postpones per break, and finally, `microbreakPostponableDurationPercent` and `breakPostponableDurationPercent` to change the percentage of the break during which the user can postpone it.
 
@@ -322,25 +313,11 @@ If you want breaks to wait for you to finish them manually instead of automatica
 
 Once enabled, the break behaves normally until it reaches 100%, then the window switches to showing elapsed time since the break started. You must press the Finish button or use the `endBreakShortcut` to close the break.
 
-#### Toggle breaks shortcut
+#### Pause breaks for 30 minutes shortcut
 
-Toggling between Pause breaks and running breaks.
-
-In the preferences file, set `pauseBreaksToggleShortcut` to your preferred value. We do not validate this input, so please check [Electron's documentation](https://www.electronjs.org/docs/latest/tutorial/keyboard-shortcuts#accelerators) for available values for key and modifier. When a given accelerator is already taken by other applications, this call will silently fail. This behavior is intended by operating systems, since they don't want applications to fight for global shortcuts.
+You can set a shortcut to pause breaks for 30 minutes by setting `pauseBreaksFor30MinutesShortcut` in the preferences file. Breaks cannot be paused for longer, so there is no shortcut for a longer or an indefinite pause. A pause only delays the break that was coming: when it ends, the countdown picks up where it stood, and a break that was showing shows again.
 
 If you'd like to disable the shortcut, set value to empty string `""`. That's the default value as well.
-
-#### Pause breaks for duration shortcuts
-
-You can also set shortcuts to pause breaks for a specific duration by modifying the following values in the preferences file:
-
-- `pauseBreaksFor30MinutesShortcut`
-- `pauseBreaksFor1HourShortcut`
-- `pauseBreaksFor2HoursShortcut`
-- `pauseBreaksFor5HoursShortcut`
-- `pauseBreaksUntilMorningShortcut`
-
-If you'd like to disable the shortcuts, set value to empty string `""`. That's the default value as well.
 
 #### Skip to the next break shortcut
 
@@ -451,7 +428,7 @@ For Windows, note that paths not specified. This is because on Windows, the API 
 You can also specify `appExclusionsCheckInterval` in milliseconds: lower number means more often checks, but also higher CPU usage. Default value is `2000` which is 2 seconds.
 
 #### Count a long Suspend/Lock as a break ![Not Reliable](https://img.shields.io/badge/Not_Reliable-β-yellow)
-A screen lock or suspend lasting `naturalBreaksInactivityResetTime` or longer counts as a break: breaks start over once the screen is unlocked and the system awake. A shorter one leaves breaks running. If you don't want a lock or suspend to affect breaks at all, set `pauseForSuspendOrLock` to `false`.
+A screen lock or suspend lasting `naturalBreaksInactivityResetTime` or longer counts as a break: breaks start over once the screen is unlocked and the system awake. During a pause, such a lock or suspend makes breaks start over when the pause ends. A shorter one leaves breaks running. If you don't want a lock or suspend to affect breaks at all, set `pauseForSuspendOrLock` to `false`.
 
 #### Monitor to show breaks on ![Not Reliable](https://img.shields.io/badge/Not_Reliable-β-yellow)
 In case you have disabled showing of breaks on all monitors, you can specify which one should contain the break window. Set `screen` value to one of the following:

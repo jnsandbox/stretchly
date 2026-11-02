@@ -7,8 +7,9 @@ const sleptGapMilliseconds = 30000
 
 // A spell away runs while the screen is locked or the system is suspended, from whichever
 // came first until both have ended. One that lasts naturalBreaksInactivityResetTime counts
-// as a break; a shorter one leaves the schedule as it was. While away, a break that comes due
-// or a popup that runs out waits for the end of the spell.
+// as a break, and during a pause makes breaks start over when it ends; a shorter one leaves
+// the schedule as it was. While away, a break that comes due or a popup that runs out waits
+// for the end of the spell.
 // Electron and GNOME can both report one screen lock, so a repeated lock is ignored.
 class AwayBreaks {
   constructor ({ settings, breakPlanner, breakLog, closeBreakPopup, updateTray }) {
@@ -129,7 +130,20 @@ class AwayBreaks {
     this.breakPlanner.releaseSchedules()
     if (!this.settings.get('pauseForSuspendOrLock') ||
       awayMilliseconds < this.settings.get('naturalBreaksInactivityResetTime') ||
-      naturalBreakCleared || !this.isScheduleRunning()) {
+      naturalBreakCleared) {
+      this.updateTray()
+      return
+    }
+    if (this.breakPlanner.isPaused) {
+      this.breakLog.recordAwayBreak({
+        awayMilliseconds, cause, scheduledBreakType: this.breakPlanner.pausedBreakType
+      })
+      this.breakPlanner.startOverAfterPause()
+      log.info(`Stretchly: breaks start over after the pause, ${Math.round(awayMilliseconds / 1000)}s away`)
+      this.updateTray()
+      return
+    }
+    if (!this.isScheduleRunning()) {
       this.updateTray()
       return
     }
