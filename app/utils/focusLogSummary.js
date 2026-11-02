@@ -2,6 +2,7 @@ import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } fr
 import { homedir } from 'node:os'
 import { basename, join } from 'path'
 import log from 'electron-log/main.js'
+import { lineTime, padded, parsedLogLine } from './logLines.js'
 
 // VS Code reports either app ID, depending on how it was installed.
 const vsCodeAppIds = new Set(['code.desktop', 'com.microsoft.VSCode.desktop'])
@@ -14,24 +15,10 @@ const newlineByte = 0x0a
 const extensionQuestion = 'Is the focus-log extension running?'
 
 // The extension's default log, in the user's home folder.
-export const defaultFocusLogPath = join(homedir(), '.local', 'state', 'break-timer', 'focus.jsonl')
+const defaultFocusLogPath = join(homedir(), '.local', 'state', 'break-timer', 'focus.jsonl')
 
 const awayStartEvents = { idle_start: 'idle', lock: 'lock', suspend: 'suspend' }
 const awayEndEvents = { idle_end: 'idle', unlock: 'lock', resume: 'suspend' }
-
-function lineTime (line) {
-  return new Date(line.time).getTime()
-}
-
-// A damaged line is reported and passed over, so one bad write does not hide the day.
-function parsedLine (text, focusLogPath) {
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    log.warn(`Stretchly: cannot read focus log line in ${focusLogPath}: ${error.message}`)
-    return null
-  }
-}
 
 // The log is never rotated, so it is read backwards, back to the last focus line before
 // `since`: that line says which window had focus overnight.
@@ -69,7 +56,7 @@ function readExistingFocusLogSince (focusLogPath, since) {
       unread = unread.subarray(0, firstCompleteLine)
       for (let index = texts.length - 1; index >= 0; index--) {
         if (texts[index] === '') continue
-        const line = parsedLine(texts[index], focusLogPath)
+        const line = parsedLogLine(texts[index], `focus log line in ${focusLogPath}`)
         if (line === null) continue
         if (lastLineTime === null) lastLineTime = lineTime(line)
         linesNewestFirst.push(line)
@@ -85,8 +72,8 @@ function readExistingFocusLogSince (focusLogPath, since) {
   }
 }
 
-// Lines before `from` only set the state, so a stretch across midnight belongs to the
-// day before, as in scripts/focus_test_day.py.
+// Lines before `from` only set the state: a stretch that starts before midnight counts
+// for the day before, even the part of it after midnight.
 function activeSecondsPerWindow (lines, { from, until }) {
   const secondsPerWindow = new Map()
   const openAway = new Set()
@@ -216,7 +203,7 @@ function durationText (seconds) {
 
 function clockText (epochMilliseconds) {
   const time = new Date(epochMilliseconds)
-  return `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
+  return `${padded(time.getHours())}:${padded(time.getMinutes())}`
 }
 
 // Within a stretch of work as long as a break interval the extension always writes a
@@ -231,7 +218,7 @@ function staleWarning (lastLineTime, midnight, lastBreakEnded) {
 
 // Returns today's active time and listed entries, or a warning when the log is missing
 // or stale. lastBreakEnded is when the last real break or this run started, or null.
-export function todaysFocusUsage ({ focusLogPath, midnight, lastBreakEnded }) {
+export function todaysFocusUsage ({ focusLogPath = defaultFocusLogPath, midnight, lastBreakEnded }) {
   const { lines, lastLineTime } = readFocusLogSince(focusLogPath, midnight)
   const warning = staleWarning(lastLineTime, midnight, lastBreakEnded)
   if (warning !== null) return { warning }

@@ -157,7 +157,7 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:08:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
     ])
     expect(longBreakWindowText({ logFilePath, focusLogPath }))
-      .toEqual(['52 minutes since your last break', 'Today: 3 breaks taken · 0 postponed', noFocusLog])
+      .toEqual({ headline: '52 minutes since your last break', todayLine: 'Today: 3 breaks taken · 0 postponed', usage: noFocusLog })
   })
 
   it('counts every press of postpone, and says since you started before any break', async () => {
@@ -170,7 +170,7 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:55:00.000+02:00', event: 'postponed', previous_postpones: 1, break_type: 'long', seconds_shown: 4 }
     ])
     expect(longBreakWindowText({ logFilePath, focusLogPath }))
-      .toEqual(['60 minutes since you started', 'Today: 0 breaks taken · 2 postponed', noFocusLog])
+      .toEqual({ headline: '60 minutes since you started', todayLine: 'Today: 0 breaks taken · 2 postponed', usage: noFocusLog })
   })
 
   it('says a single break taken in the singular', async () => {
@@ -179,7 +179,7 @@ describe('long break window text', () => {
       { time: '2026-10-20T09:59:00.000+02:00', event: 'taken', break_type: 'long', seconds_shown: 300 }
     ])
     expect(longBreakWindowText({ logFilePath, focusLogPath }))
-      .toEqual(['1 minute since your last break', 'Today: 1 break taken · 0 postponed', noFocusLog])
+      .toEqual({ headline: '1 minute since your last break', todayLine: 'Today: 1 break taken · 0 postponed', usage: noFocusLog })
   })
 })
 
@@ -210,11 +210,11 @@ describe('long break window usage from the focus log', () => {
       event('09:00:00', 'resume'),
       focus('09:20:00', 2, 'firefox.desktop', 'News')
     ])
-    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual([
-      '120 minutes since you started',
-      'Today: 1h 30m active · 0 breaks taken · 0 postponed',
-      { entries: [{ name: 'Terminal', duration: '50m' }, { name: 'firefox', duration: '40m' }] }
-    ])
+    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual({
+      headline: '120 minutes since you started',
+      todayLine: 'Today: 1h 30m active · 0 breaks taken · 0 postponed',
+      usage: { entries: [{ name: 'Terminal', duration: '50m' }, { name: 'firefox', duration: '40m' }] }
+    })
   })
 
   it('warns in place of the list when the focus log has nothing since the last break ended', async () => {
@@ -226,10 +226,10 @@ describe('long break window usage from the focus log', () => {
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:12:00', 2, 'firefox.desktop', 'News')
     ])
-    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual([
-      '30 minutes since your last break',
-      'Today: 1 break taken · 0 postponed',
-      { warning: 'No window data since 09:12. Is the focus-log extension running?' }
-    ])
+    expect(longBreakWindowText({ logFilePath, focusLogPath })).toEqual({
+      headline: '30 minutes since your last break',
+      todayLine: 'Today: 1 break taken · 0 postponed',
+      usage: { warning: 'No window data since 09:12. Is the focus-log extension running?' }
+    })
   })
 })

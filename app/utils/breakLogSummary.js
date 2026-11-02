@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import log from 'electron-log/main.js'
 import { breakLogBreakTypes, breakLogEvents } from './breakLog.js'
+import { lineTime, parsedLogLine } from './logLines.js'
 import { todaysFocusUsage } from './focusLogSummary.js'
 
 // The lines on which stretchly restarts its schedule after the user rested. A lock
@@ -12,19 +12,15 @@ const realBreakEvents = new Set([
 // A skipped line could hide a real break, so it is reported rather than passed over.
 function parsedLines (logFilePath) {
   if (!existsSync(logFilePath)) return []
-  return readFileSync(logFilePath, 'utf8').split('\n').flatMap((line, index) => {
-    if (line === '') return []
-    try {
-      return [JSON.parse(line)]
-    } catch (error) {
-      log.warn(`Stretchly: cannot read break log line ${index + 1} of ${logFilePath}: ${error.message}`)
-      return []
-    }
+  return readFileSync(logFilePath, 'utf8').split('\n').flatMap((text, index) => {
+    if (text === '') return []
+    const line = parsedLogLine(text, `break log line ${index + 1} of ${logFilePath}`)
+    return line === null ? [] : [line]
   })
 }
 
 function elapsedSince (line, sinceStart) {
-  const since = new Date(line.time).getTime()
+  const since = lineTime(line)
   return { since, minutes: Math.floor((Date.now() - since) / 60000), sinceStart }
 }
 
@@ -37,13 +33,9 @@ function isRealBreak (line) {
     !(line.event === breakLogEvents.taken && line.break_type === breakLogBreakTypes.mini)
 }
 
-// Reads the break log back for when the user last rested, counting from this run's
-// start when no real break has ended since. Returns { since, minutes, sinceStart },
-// since in epoch milliseconds, or null when the log holds no start line.
-export function readTimeSinceLastBreak (logFilePath) {
-  return timeSinceLastBreak(parsedLines(logFilePath))
-}
-
+// When the user last rested, counting from this run's start when no real break has ended
+// since. Returns { since, minutes, sinceStart }, since in epoch milliseconds, or null when
+// the log holds no start line.
 function timeSinceLastBreak (lines) {
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index]
@@ -64,11 +56,12 @@ function startOfToday () {
 }
 
 // The counts read every line since local midnight, so a restart of stretchly keeps them.
+// focusLogPath defaults to the focus-log extension's own log.
 export function longBreakWindowText ({ logFilePath, focusLogPath }) {
   const lines = parsedLines(logFilePath)
   const sinceLastBreak = timeSinceLastBreak(lines)
   const midnight = startOfToday()
-  const todaysLines = lines.filter(line => new Date(line.time).getTime() >= midnight)
+  const todaysLines = lines.filter(line => lineTime(line) >= midnight)
   const breaksTaken = todaysLines.filter(isRealBreak).length
   const postponed = todaysLines.filter(line => line.event === breakLogEvents.postponed).length
   const breakCounts = `${countText(breaksTaken, 'break')} taken · ${postponed} postponed`
@@ -76,8 +69,8 @@ export function longBreakWindowText ({ logFilePath, focusLogPath }) {
   const usage = todaysFocusUsage({
     focusLogPath, midnight, lastBreakEnded: sinceLastBreak === null ? null : sinceLastBreak.since
   })
-  if (usage.warning) return [headline, `Today: ${breakCounts}`, { warning: usage.warning }]
-  return [headline, `Today: ${usage.activeTime} active · ${breakCounts}`, { entries: usage.entries }]
+  if (usage.warning) return { headline, todayLine: `Today: ${breakCounts}`, usage: { warning: usage.warning } }
+  return { headline, todayLine: `Today: ${usage.activeTime} active · ${breakCounts}`, usage: { entries: usage.entries } }
 }
 
 // secondsText is stretchly's own lead-time text, kept when the lead time is not whole minutes.
@@ -85,7 +78,7 @@ export function longBreakWarning ({ leadMilliseconds, secondsText, logFilePath }
   const firstSentence = leadMilliseconds > 0 && leadMilliseconds % 60000 === 0
     ? `Long break in ${countText(leadMilliseconds / 60000, 'minute')}.`
     : `${secondsText}.`
-  const timeSinceLastBreak = readTimeSinceLastBreak(logFilePath)
-  if (timeSinceLastBreak === null) return firstSentence
-  return `${firstSentence} ${sinceLastBreakText(timeSinceLastBreak)}.`
+  const sinceLastBreak = timeSinceLastBreak(parsedLines(logFilePath))
+  if (sinceLastBreak === null) return firstSentence
+  return `${firstSentence} ${sinceLastBreakText(sinceLastBreak)}.`
 }
