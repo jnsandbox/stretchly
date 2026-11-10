@@ -10,12 +10,30 @@ const remoteLabelPrefixes = ['SSH: ', 'Dev Container: ']
 const unattributed = '(unattributed)'
 const braveAppId = 'brave-browser.desktop'
 const braveOwnEntrySeconds = 15 * 60
+const sitePartSeconds = 5 * 60
 // Sites whose pages each carry their own title, so only the site as a whole adds up.
+// Each splits into parts read from the title, such as a Mattermost chat.
 const braveSites = [
-  { name: 'Mattermost', matches: pageTitle => pageTitle.endsWith('Mattermost') },
-  // GitLab issue pages leave the site's name out of the title.
-  { name: 'GitLab', matches: pageTitle => pageTitle.endsWith('· GitLab') || pageTitle.includes(' · Issue · ') || pageTitle.startsWith('gitlab.') },
-  { name: 'Jitsi', matches: pageTitle => pageTitle.includes('Jitsi Meet') || pageTitle.startsWith('jitsi.') }
+  {
+    name: 'Mattermost',
+    restName: 'other chats',
+    matches: pageTitle => pageTitle.endsWith('Mattermost'),
+    // `<chat> - <team> Mattermost`
+    partOf: pageTitle => pageTitle.includes(' - ') ? pageTitle.slice(0, pageTitle.lastIndexOf(' - ')) : null
+  },
+  {
+    name: 'GitLab',
+    restName: 'other projects',
+    // GitLab issue pages leave the site's name out of the title.
+    matches: pageTitle => pageTitle.endsWith('· GitLab') || pageTitle.includes(' · Issue · ') || pageTitle.startsWith('gitlab.'),
+    partOf: gitLabProject
+  },
+  {
+    name: 'Jitsi',
+    restName: 'other rooms',
+    matches: pageTitle => pageTitle.includes('Jitsi Meet') || pageTitle.startsWith('jitsi.'),
+    partOf: jitsiRoom
+  }
 ]
 const listedEntryCount = 15
 
@@ -164,16 +182,41 @@ function bravePageTitle (title) {
   return (title || '').replace(/ - Brave$/, '').replace(/^\(\d+\) /, '')
 }
 
-function braveEntryName (title) {
-  const pageTitle = bravePageTitle(title)
-  const site = braveSites.find(candidate => candidate.matches(pageTitle))
-  return `Brave · ${site ? site.name : pageTitle}`
+// The project is the last part of its path: `Ambee / autonomy-engine · GitLab`,
+// `· Issue · ambee/claude_issues`, or `gitlab.example.com/ambee/autonomy-engine/-/jobs/1/raw`.
+function gitLabProject (pageTitle) {
+  if (pageTitle.includes(' · Issue · ')) return lastPathPart(pageTitle.split(' · Issue · ').pop(), '/')
+  if (pageTitle.startsWith('gitlab.')) {
+    const pathParts = pageTitle.split('/-/')[0].split('/')
+    return pathParts.length >= 3 ? pathParts[pathParts.length - 1] : null
+  }
+  const projectPath = pageTitle.split(' · ').reverse().find(segment => segment.includes(' / '))
+  return projectPath ? lastPathPart(projectPath, ' / ') : null
+}
+
+function lastPathPart (path, separator) {
+  return path.split(separator).pop().trim() || null
+}
+
+// `<room> | Jitsi Meet`, or `jitsi.example.com/<room>` while the page loads.
+function jitsiRoom (pageTitle) {
+  if (pageTitle.includes(' | Jitsi Meet')) return pageTitle.split(' | Jitsi Meet')[0]
+  if (pageTitle.startsWith('jitsi.') && pageTitle.includes('/')) return lastPathPart(pageTitle, '/')
+  return null
+}
+
+function braveSiteEntryName (site) {
+  return `Brave · ${site.name}`
 }
 
 function entryName (focusedWindow, desktopNames) {
   const { appId, title } = focusedWindow
   if (vsCodeAppIds.has(appId)) return `VS Code · ${vsCodeWorkspace(title)}`
-  if (appId === braveAppId) return braveEntryName(title)
+  if (appId === braveAppId) {
+    const pageTitle = bravePageTitle(title)
+    const site = braveSites.find(candidate => candidate.matches(pageTitle))
+    return site ? braveSiteEntryName(site) : `Brave · ${pageTitle}`
+  }
   // GNOME gives no app ID to some windows, such as games run through Steam.
   if (appId.startsWith('window:')) return (title || '').trim() || appId
   return appName(appId, desktopNames)
@@ -189,17 +232,45 @@ function rankedUsage (windows) {
   const desktopNames = new Map()
   const secondsPerEntry = new Map()
   const secondsPerBravePage = new Map()
-  const braveSiteNames = new Set(braveSites.map(site => `Brave · ${site.name}`))
+  const secondsPerSitePart = new Map(braveSites.map(site => [braveSiteEntryName(site), new Map()]))
   for (const focusedWindow of windows) {
     const name = entryName(focusedWindow, desktopNames)
-    const isBravePage = focusedWindow.appId === braveAppId && !braveSiteNames.has(name)
+    const sitePartSecondsByName = secondsPerSitePart.get(name)
+    if (focusedWindow.appId === braveAppId && sitePartSecondsByName) {
+      const pageTitle = bravePageTitle(focusedWindow.title)
+      const site = braveSites.find(candidate => braveSiteEntryName(candidate) === name)
+      addSeconds(sitePartSecondsByName, site.partOf(pageTitle), focusedWindow.seconds)
+    }
+    const isBravePage = focusedWindow.appId === braveAppId && !sitePartSecondsByName
     addSeconds(isBravePage ? secondsPerBravePage : secondsPerEntry, name, focusedWindow.seconds)
   }
   for (const [name, seconds] of secondsPerBravePage) {
     addSeconds(secondsPerEntry, seconds >= braveOwnEntrySeconds ? name : 'Brave · other tabs', seconds)
   }
-  return [...secondsPerEntry].map(([name, seconds]) => ({ name, seconds }))
+  return [...secondsPerEntry].map(([name, seconds]) => {
+    const site = braveSites.find(candidate => braveSiteEntryName(candidate) === name)
+    const parts = site ? listedSiteParts(site, secondsPerSitePart.get(name), seconds) : []
+    return parts.length > 0 ? { name, seconds, parts } : { name, seconds }
+  }).sort((first, second) => second.seconds - first.seconds)
+}
+
+// A site's parts of 5 minutes or more, then the rest on one line. With none that long the
+// site's total stands alone.
+function listedSiteParts (site, secondsPerPart, siteSeconds) {
+  const listed = [...secondsPerPart]
+    .filter(([name, seconds]) => name !== null && seconds >= sitePartSeconds)
+    .map(([name, seconds]) => ({ name, seconds }))
     .sort((first, second) => second.seconds - first.seconds)
+  if (listed.length === 0) return []
+  const restSeconds = siteSeconds - listed.reduce((total, part) => total + part.seconds, 0)
+  if (restSeconds >= 60) listed.push({ name: site.restName, seconds: restSeconds })
+  return listed
+}
+
+function withDuration ({ name, seconds, parts }) {
+  const entry = { name, duration: durationText(seconds) }
+  if (parts) entry.parts = parts.map(withDuration)
+  return entry
 }
 
 // Returns the entries the break window lists: the top 15, then the rest as Other.
@@ -208,7 +279,7 @@ function listedUsage (windows) {
   const listed = ranked.slice(0, listedEntryCount)
   const rest = ranked.slice(listedEntryCount)
   if (rest.length > 0) listed.push({ name: 'Other', seconds: rest.reduce((total, entry) => total + entry.seconds, 0) })
-  return listed.map(({ name, seconds }) => ({ name, duration: durationText(seconds) }))
+  return listed.map(withDuration)
 }
 
 function durationText (seconds) {

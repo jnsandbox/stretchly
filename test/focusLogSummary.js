@@ -103,7 +103,7 @@ describe('today\'s usage from the focus log', () => {
     })
   })
 
-  it('sums all Mattermost, GitLab and Jitsi pages into one entry per site, however short each page', async () => {
+  it('sums Mattermost, GitLab and Jitsi pages into one entry per site, split into chats, projects and rooms of 5 minutes or more', async () => {
     const brave = (clock, title) => ({ ...focus(clock, 1, 'brave-browser.desktop', `${title} - Brave`), event: 'title' })
     await writeFocusLog([
       focus('08:00:00', 1, 'brave-browser.desktop', 'jelmer - Ambyon Mattermost - Brave'),
@@ -121,12 +121,33 @@ describe('today\'s usage from the focus log', () => {
     expect(usage()).toEqual({
       activeTime: '45m',
       entries: [
-        { name: 'Brave · Jitsi', duration: '15m' },
-        { name: 'Brave · GitLab', duration: '13m' },
-        { name: 'Brave · Mattermost', duration: '12m' },
+        {
+          name: 'Brave · Jitsi',
+          duration: '15m',
+          parts: [{ name: 'Sprint', duration: '10m' }, { name: 'other rooms', duration: '5m' }]
+        },
+        {
+          name: 'Brave · GitLab',
+          duration: '13m',
+          parts: [{ name: 'autonomy-engine', duration: '8m' }, { name: 'claude_issues', duration: '5m' }]
+        },
+        {
+          name: 'Brave · Mattermost',
+          duration: '12m',
+          parts: [{ name: 'jelmer', duration: '5m' }, { name: 'Tooling', duration: '5m' }, { name: 'other chats', duration: '2m' }]
+        },
         { name: 'Brave · other tabs', duration: '5m' }
       ]
     })
+  })
+
+  it('shows a site\'s total alone when none of its chats reaches 5 minutes', async () => {
+    await writeFocusLog([
+      focus('08:00:00', 1, 'brave-browser.desktop', 'IT - Ambyon Mattermost - Brave'),
+      { ...focus('08:04:00', 1, 'brave-browser.desktop', 'Tech - Ambyon Mattermost - Brave'), event: 'title' },
+      event('08:08:00', 'lock')
+    ])
+    expect(usage().entries).toEqual([{ name: 'Brave · Mattermost', duration: '8m' }])
   })
 
   it('lists the top 15 entries by desktop name, or title without an app ID, and sums the rest as Other', async () => {

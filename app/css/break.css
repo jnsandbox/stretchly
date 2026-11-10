@@ -90,6 +90,14 @@ body.break-health-mode {
   text-align: right;
 }
 
+.breaks > :nth-child(1) >  .break-usage > .break-usage-part {
+  opacity: 0.75;
+}
+
+.breaks > :nth-child(1) >  .break-usage > .break-usage-part:nth-child(2n + 1) {
+  padding-left: 30px;
+}
+
 .breaks > :nth-child(2) {
   font-size: 18px;
   letter-spacing: 0.26px;

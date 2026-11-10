@@ -12,12 +12,21 @@ function showUsage (usageElement, usage) {
     return
   }
   for (const entry of usage.entries) {
-    const name = document.createElement('span')
-    name.textContent = entry.name
-    const duration = document.createElement('span')
-    duration.textContent = entry.duration
-    usageElement.append(name, duration)
+    appendUsageRow(usageElement, entry, false)
+    for (const part of entry.parts || []) appendUsageRow(usageElement, part, true)
   }
+}
+
+function appendUsageRow (usageElement, { name, duration }, isPart) {
+  const nameElement = document.createElement('span')
+  nameElement.textContent = name
+  const durationElement = document.createElement('span')
+  durationElement.textContent = duration
+  if (isPart) {
+    nameElement.classList.add('break-usage-part')
+    durationElement.classList.add('break-usage-part')
+  }
+  usageElement.append(nameElement, durationElement)
 }
 
 window.onload = async (event) => {
