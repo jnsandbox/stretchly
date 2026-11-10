@@ -43,6 +43,10 @@ function event (clock, name) {
   return { time: `2026-10-20T${clock}.000+02:00`, event: name }
 }
 
+function padTwo (number) {
+  return String(number).padStart(2, '0')
+}
+
 function usage () {
   return todaysFocusUsage({ focusLogPath, midnight, lastBreakEnded: startedAtEight })
 }
@@ -81,49 +85,91 @@ describe('today\'s usage from the focus log', () => {
     })
   })
 
-  it('lists a Brave page with 20 minutes today on its own and sums shorter ones as other tabs', async () => {
+  it('lists a Brave page with 15 minutes today on its own and sums shorter ones as other tabs', async () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'brave-browser.desktop', '(3) Inbox - Brave'),
-      { time: '2026-10-20T08:20:00.000+02:00', event: 'title', window_id: 1, app_id: 'brave-browser.desktop', title: 'Perception profiling comparison - Brave' },
-      focus('08:39:59', 2, 'org.gnome.Terminal.desktop', 'bash'),
+      { time: '2026-10-20T08:15:00.000+02:00', event: 'title', window_id: 1, app_id: 'brave-browser.desktop', title: 'Perception profiling comparison - Brave' },
+      focus('08:29:59', 2, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 1, 'brave-browser.desktop', 'Docs - Brave'),
       event('09:10:00', 'lock')
     ])
     expect(usage()).toEqual({
       activeTime: '1h 10m',
       entries: [
-        { name: 'Brave · other tabs', duration: '29m' },
-        { name: 'Terminal', duration: '20m' },
-        { name: 'Brave · Inbox', duration: '20m' }
+        { name: 'Terminal', duration: '30m' },
+        { name: 'Brave · other tabs', duration: '24m' },
+        { name: 'Brave · Inbox', duration: '15m' }
       ]
     })
   })
 
-  it('lists the top 5 entries by desktop name, or title without an app ID, and sums the rest as Other', async () => {
+  it('sums Mattermost, GitLab and Jitsi pages into one entry per site, split into chats, projects and rooms of 5 minutes or more', async () => {
+    const brave = (clock, title) => ({ ...focus(clock, 1, 'brave-browser.desktop', `${title} - Brave`), event: 'title' })
+    await writeFocusLog([
+      focus('08:00:00', 1, 'brave-browser.desktop', 'jelmer - Ambyon Mattermost - Brave'),
+      brave('08:05:00', '(2) Tooling - Ambyon Mattermost'),
+      brave('08:10:00', 'Mattermost'),
+      brave('08:12:00', 'Link the TensorRT major (!398) · Merge requests · Ambee / autonomy-engine · GitLab'),
+      brave('08:17:00', 'Login shell startup costs 10.6 s per command (#46) · Issue · ambee/claude_issues'),
+      brave('08:22:00', 'gitlab.ambee.nl/ambee/autonomy-engine/-/jobs/15656/raw'),
+      brave('08:25:00', 'Sprint | Jitsi Meet'),
+      brave('08:35:00', 'jitsi.ambyon.care/sprint'),
+      brave('08:37:00', 'Jitsi Meet'),
+      brave('08:40:00', 'WhatsApp'),
+      event('08:45:00', 'lock')
+    ])
+    expect(usage()).toEqual({
+      activeTime: '45m',
+      entries: [
+        {
+          name: 'Brave · Jitsi',
+          duration: '15m',
+          parts: [{ name: 'Sprint', duration: '10m' }, { name: 'other rooms', duration: '5m' }]
+        },
+        {
+          name: 'Brave · GitLab',
+          duration: '13m',
+          parts: [{ name: 'autonomy-engine', duration: '8m' }, { name: 'claude_issues', duration: '5m' }]
+        },
+        {
+          name: 'Brave · Mattermost',
+          duration: '12m',
+          parts: [{ name: 'jelmer', duration: '5m' }, { name: 'Tooling', duration: '5m' }, { name: 'other chats', duration: '2m' }]
+        },
+        { name: 'Brave · other tabs', duration: '5m' }
+      ]
+    })
+  })
+
+  it('shows a site\'s total alone when none of its chats reaches 5 minutes', async () => {
+    await writeFocusLog([
+      focus('08:00:00', 1, 'brave-browser.desktop', 'IT - Ambyon Mattermost - Brave'),
+      { ...focus('08:04:00', 1, 'brave-browser.desktop', 'Tech - Ambyon Mattermost - Brave'), event: 'title' },
+      event('08:08:00', 'lock')
+    ])
+    expect(usage().entries).toEqual([{ name: 'Brave · Mattermost', duration: '8m' }])
+  })
+
+  it('lists the top 15 entries by desktop name, or title without an app ID, and sums the rest as Other', async () => {
     const applicationsFolder = join(logFolder, 'data', 'applications')
     await mkdir(applicationsFolder, { recursive: true })
     await writeFile(join(applicationsFolder, 'firefox.desktop'),
       '[Desktop Entry]\nName=Firefox Web Browser\nExec=firefox\n\n[Desktop Action new-window]\nName=New Window\n')
+    const otherApps = Array.from({ length: 15 }, (_, index) => `app${String(index + 1).padStart(2, '0')}.desktop`)
+    // Firefox first for 30 minutes, then 15 apps of 6 minutes each, the last of them ranked out.
     await writeFocusLog([
-      focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
-      focus('08:30:00', 2, 'firefox.desktop', 'News'),
-      focus('08:55:00', 3, 'window:26', 'Hollow Knight'),
-      focus('09:15:00', 4, 'mpv.desktop', 'film.mkv'),
-      focus('09:30:00', 5, 'org.mozilla.Thunderbird.desktop', 'Inbox'),
-      focus('09:40:00', 6, 'spotify.desktop', 'Spotify'),
-      focus('09:48:00', 7, 'org.gnome.Nautilus.desktop', 'Home')
+      focus('08:00:00', 1, 'firefox.desktop', 'News'),
+      ...otherApps.map((appId, index) => {
+        const minutes = 30 + index * 6
+        return focus(`${padTwo(8 + Math.floor(minutes / 60))}:${padTwo(minutes % 60)}:00`, index + 2, appId, appId)
+      }),
+      event('10:00:00', 'lock')
     ])
-    expect(usage()).toEqual({
-      activeTime: '2h 0m',
-      entries: [
-        { name: 'Terminal', duration: '30m' },
-        { name: 'Firefox Web Browser', duration: '25m' },
-        { name: 'Hollow Knight', duration: '20m' },
-        { name: 'mpv', duration: '15m' },
-        { name: 'Nautilus', duration: '12m' },
-        { name: 'Other', duration: '18m' }
-      ]
-    })
+    const { entries } = usage()
+    expect(entries).toHaveLength(16)
+    expect(entries[0]).toEqual({ name: 'Firefox Web Browser', duration: '30m' })
+    expect(entries.slice(1, 15).every(entry => entry.duration === '6m')).toBe(true)
+    expect(entries[15]).toEqual({ name: 'Other', duration: '6m' })
   })
 
   it('counts a second idle start at screen blank and lock, and a repeated focus line, only once', async () => {

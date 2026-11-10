@@ -6,6 +6,9 @@ import AppExclusionsManager from './utils/appExclusionsManager.js'
 import GnomeSession from './utils/gnomeSession.js'
 import log from 'electron-log/main.js'
 
+// The idle time from which the natural-break monitor counts the user as away.
+const idleCountsAsAwayMilliseconds = 20000
+
 class BreaksPlanner extends EventEmitter {
   constructor (settings) {
     super()
@@ -32,9 +35,8 @@ class BreaksPlanner extends EventEmitter {
       this._planScheduler()
     })
 
-    this.on('breakStarted', (shouldPlaySound) => {
-      const interval = this.settings.get('breakDuration')
-      this.scheduler = new Scheduler(() => this.emit('finishBreak', shouldPlaySound, true), interval, 'finishBreak')
+    this.on('breakStarted', (shouldPlaySound, duration = this.settings.get('breakDuration')) => {
+      this.scheduler = new Scheduler(() => this.emit('finishBreak', shouldPlaySound, true), duration, 'finishBreak')
       this._planScheduler()
     })
 
@@ -172,6 +174,15 @@ class BreaksPlanner extends EventEmitter {
     const eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}`
     this.scheduler = new Scheduler(() => this.emit(eventName), breakNotificationInterval, eventName)
     this._planScheduler()
+  }
+
+  // Time the user has already spent away from the keyboard counts toward a Long break.
+  // Shorter idle is a pause to read, not time away.
+  longBreakDuration () {
+    const breakDuration = this.settings.get('breakDuration')
+    const idleMilliseconds = this.naturalBreaksManager.latestIdleMilliseconds()
+    if (idleMilliseconds < idleCountsAsAwayMilliseconds) return breakDuration
+    return Math.max(breakDuration - idleMilliseconds, 0)
   }
 
   postponeCurrentBreak () {

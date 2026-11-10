@@ -933,7 +933,10 @@ function startBreak ({ startedEarly = false } = {}) {
     return
   }
 
-  const breakDuration = settings.get('breakDuration')
+  const breakDuration = breakPlanner.longBreakDuration()
+  if (breakDuration < settings.get('breakDuration')) {
+    log.info(`Stretchly: shortening Long break to ${Math.round(breakDuration / 1000)} s for idle time before it`)
+  }
   const strictMode = settings.get('breakStrictMode')
   const postponesLimit = settings.get('breakPostponesLimit')
   const postponableDurationPercent = settings.get('breakPostponableDurationPercent')
@@ -1054,7 +1057,7 @@ function startBreak ({ startedEarly = false } = {}) {
         }
       }
       if (localDisplayId === emitOnId) {
-        breakPlanner.emit('breakStarted', true)
+        breakPlanner.emit('breakStarted', true, breakDuration)
         log.info('Stretchly: starting Long break')
       }
 

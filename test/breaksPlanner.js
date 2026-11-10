@@ -140,6 +140,32 @@ describe('breaksPlanner', () => {
     expect(restartIdleTimes).toEqual([412000])
   })
 
+  describe('a Long break opening while the user is idle', () => {
+    function idleFor (milliseconds) {
+      vi.spyOn(breaksPlanner.naturalBreaksManager, 'latestIdleMilliseconds').mockReturnValue(milliseconds)
+    }
+
+    it('is shortened by the time the user has been idle', () => {
+      idleFor(180000)
+      expect(breaksPlanner.longBreakDuration()).toBe(120000)
+    })
+
+    it('keeps its full length after under 20 seconds idle', () => {
+      idleFor(19999)
+      expect(breaksPlanner.longBreakDuration()).toBe(300000)
+    })
+
+    it('finishes after the length it started with', () => {
+      const finishes = []
+      breaksPlanner.on('finishBreak', () => finishes.push(Date.now()))
+      breaksPlanner.emit('breakStarted', true, 120000)
+      vi.advanceTimersByTime(119999)
+      expect(finishes).toHaveLength(0)
+      vi.advanceTimersByTime(1)
+      expect(finishes).toHaveLength(1)
+    })
+  })
+
   it('reports the break it cleared when Do Not Disturb clears the schedule', () => {
     const clearedBreakTypes = []
     breaksPlanner.on('doNotDisturbCleared', (breakType) => clearedBreakTypes.push(breakType))

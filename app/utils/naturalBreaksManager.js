@@ -14,6 +14,7 @@ class NaturalBreaksManager extends EventEmitter {
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
     this.countsIdleFrom = null
+    this.idleMillisecondsAtLatestCheck = 0
     if (this.usingNaturalBreaks) {
       this.start()
     }
@@ -32,6 +33,7 @@ class NaturalBreaksManager extends EventEmitter {
     this.usingNaturalBreaks = false
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
+    this.idleMillisecondsAtLatestCheck = 0
     clearInterval(this.timer)
     this.timer = null
     desktopIdle.stopMonitoring()
@@ -42,6 +44,11 @@ class NaturalBreaksManager extends EventEmitter {
   // through a suspend, and the time away has already been dealt with.
   countIdleFrom (timestamp) {
     this.countsIdleFrom = timestamp
+  }
+
+  // Read synchronously, so it may be a check interval old.
+  latestIdleMilliseconds () {
+    return this.idleMillisecondsAtLatestCheck
   }
 
   // Under the X11 backend Electron only sees input sent to X11 windows, so GNOME's
@@ -73,6 +80,7 @@ class NaturalBreaksManager extends EventEmitter {
       // stop() may have run while the idle time was being read
       if (this.timer !== timer) return
       if (this.countsIdleFrom !== null) idleTime = Math.min(idleTime, Date.now() - this.countsIdleFrom)
+      this.idleMillisecondsAtLatestCheck = idleTime
       if (!this.isOnNaturalBreak && idleTime > 20000) {
         this.isOnNaturalBreak = true
       }
