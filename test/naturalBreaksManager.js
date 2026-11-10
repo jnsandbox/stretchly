@@ -108,6 +108,12 @@ describe('naturalBreaksManager', function () {
       manager.isSchedulerCleared.should.be.equal(true)
     })
 
+    it('reports the idle time read at its latest check', async () => {
+      const manager = managerWithGnomeIdleTime(180000)
+      await vi.advanceTimersByTimeAsync(checkInterval)
+      manager.latestIdleMilliseconds().should.be.equal(180000)
+    })
+
     it('keeps checking after a check fails to read the idle time', async () => {
       powerMonitor.getSystemIdleTime.mockImplementationOnce(() => { throw new Error('no idle time') })
       powerMonitor.getSystemIdleTime.mockReturnValue(longerThanResetTime / 1000)
