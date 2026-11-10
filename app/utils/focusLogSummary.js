@@ -9,7 +9,15 @@ const vsCodeAppIds = new Set(['code.desktop', 'com.microsoft.VSCode.desktop'])
 const remoteLabelPrefixes = ['SSH: ', 'Dev Container: ']
 const unattributed = '(unattributed)'
 const braveAppId = 'brave-browser.desktop'
-const braveOwnEntrySeconds = 20 * 60
+const braveOwnEntrySeconds = 15 * 60
+// Sites whose pages each carry their own title, so only the site as a whole adds up.
+const braveSites = [
+  { name: 'Mattermost', matches: pageTitle => pageTitle.endsWith('Mattermost') },
+  // GitLab issue pages leave the site's name out of the title.
+  { name: 'GitLab', matches: pageTitle => pageTitle.endsWith('· GitLab') || pageTitle.includes(' · Issue · ') || pageTitle.startsWith('gitlab.') },
+  { name: 'Jitsi', matches: pageTitle => pageTitle.includes('Jitsi Meet') || pageTitle.startsWith('jitsi.') }
+]
+const listedEntryCount = 15
 
 const newlineByte = 0x0a
 const extensionQuestion = 'Is the focus-log extension running?'
@@ -156,10 +164,16 @@ function bravePageTitle (title) {
   return (title || '').replace(/ - Brave$/, '').replace(/^\(\d+\) /, '')
 }
 
+function braveEntryName (title) {
+  const pageTitle = bravePageTitle(title)
+  const site = braveSites.find(candidate => candidate.matches(pageTitle))
+  return `Brave · ${site ? site.name : pageTitle}`
+}
+
 function entryName (focusedWindow, desktopNames) {
   const { appId, title } = focusedWindow
   if (vsCodeAppIds.has(appId)) return `VS Code · ${vsCodeWorkspace(title)}`
-  if (appId === braveAppId) return `Brave · ${bravePageTitle(title)}`
+  if (appId === braveAppId) return braveEntryName(title)
   // GNOME gives no app ID to some windows, such as games run through Steam.
   if (appId.startsWith('window:')) return (title || '').trim() || appId
   return appName(appId, desktopNames)
@@ -169,15 +183,17 @@ function addSeconds (secondsPerEntry, name, seconds) {
   secondsPerEntry.set(name, (secondsPerEntry.get(name) || 0) + seconds)
 }
 
-// Ranks the time per entry: one entry per app, with VS Code split by workspace and
-// Brave pages of 20 minutes or more on their own.
+// Ranks the time per entry: one entry per app, with VS Code split by workspace, Brave
+// split by site where known, and other Brave pages of 15 minutes or more on their own.
 function rankedUsage (windows) {
   const desktopNames = new Map()
   const secondsPerEntry = new Map()
   const secondsPerBravePage = new Map()
+  const braveSiteNames = new Set(braveSites.map(site => `Brave · ${site.name}`))
   for (const focusedWindow of windows) {
     const name = entryName(focusedWindow, desktopNames)
-    addSeconds(focusedWindow.appId === braveAppId ? secondsPerBravePage : secondsPerEntry, name, focusedWindow.seconds)
+    const isBravePage = focusedWindow.appId === braveAppId && !braveSiteNames.has(name)
+    addSeconds(isBravePage ? secondsPerBravePage : secondsPerEntry, name, focusedWindow.seconds)
   }
   for (const [name, seconds] of secondsPerBravePage) {
     addSeconds(secondsPerEntry, seconds >= braveOwnEntrySeconds ? name : 'Brave · other tabs', seconds)
@@ -186,12 +202,11 @@ function rankedUsage (windows) {
     .sort((first, second) => second.seconds - first.seconds)
 }
 
-// Returns the entries the break window lists: the top 5, then the rest as Other.
+// Returns the entries the break window lists: the top 15, then the rest as Other.
 function listedUsage (windows) {
-  const listedCount = 5
   const ranked = rankedUsage(windows)
-  const listed = ranked.slice(0, listedCount)
-  const rest = ranked.slice(listedCount)
+  const listed = ranked.slice(0, listedEntryCount)
+  const rest = ranked.slice(listedEntryCount)
   if (rest.length > 0) listed.push({ name: 'Other', seconds: rest.reduce((total, entry) => total + entry.seconds, 0) })
   return listed.map(({ name, seconds }) => ({ name, duration: durationText(seconds) }))
 }
