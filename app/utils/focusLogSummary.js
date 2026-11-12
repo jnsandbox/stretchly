@@ -273,12 +273,13 @@ function withDuration ({ name, seconds, parts }) {
   return entry
 }
 
-// Returns the entries the break window lists: the top 15, then the rest as Other.
+// Returns the entries the break window lists: the top 15 of a minute or more, then the
+// rest as Other. Durations round down, so a shorter entry would read 0m.
 function listedUsage (windows) {
   const ranked = rankedUsage(windows)
-  const listed = ranked.slice(0, listedEntryCount)
-  const rest = ranked.slice(listedEntryCount)
-  if (rest.length > 0) listed.push({ name: 'Other', seconds: rest.reduce((total, entry) => total + entry.seconds, 0) })
+  const listed = ranked.filter(entry => entry.seconds >= 60).slice(0, listedEntryCount)
+  const restSeconds = ranked.filter(entry => !listed.includes(entry)).reduce((total, entry) => total + entry.seconds, 0)
+  if (restSeconds >= 60) listed.push({ name: 'Other', seconds: restSeconds })
   return listed.map(withDuration)
 }
 

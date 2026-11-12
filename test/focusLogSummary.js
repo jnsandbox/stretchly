@@ -172,6 +172,24 @@ describe('today\'s usage from the focus log', () => {
     expect(entries[15]).toEqual({ name: 'Other', duration: '6m' })
   })
 
+  it('folds entries under a minute into Other, and leaves Other out while it is under a minute', async () => {
+    await writeFocusLog([
+      focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      focus('09:00:00', 2, 'firefox.desktop', 'News'),
+      focus('09:00:40', 3, 'chrome.desktop', 'Mail'),
+      focus('09:01:20', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      event('09:30:00', 'lock')
+    ])
+    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 28m' }, { name: 'Other', duration: '1m' }])
+    await writeFocusLog([
+      focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      focus('09:00:00', 2, 'firefox.desktop', 'News'),
+      focus('09:00:40', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      event('09:30:00', 'lock')
+    ])
+    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 29m' }])
+  })
+
   it('counts a second idle start at screen blank and lock, and a repeated focus line, only once', async () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
