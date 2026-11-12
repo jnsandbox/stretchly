@@ -10,7 +10,6 @@ const sshLabelPrefix = 'SSH: '
 const devContainerLabelPrefix = 'Dev Container: '
 const unattributed = '(unattributed)'
 const braveAppId = 'brave-browser.desktop'
-const braveOwnEntrySeconds = 15 * 60
 const sitePartSeconds = 5 * 60
 // Sites whose pages each carry their own title, so only the site as a whole adds up.
 // Each splits into parts read from the title, such as a Mattermost chat.
@@ -37,7 +36,8 @@ const braveSites = [
   }
 ]
 const listedEntryCount = 15
-const listedEntrySeconds = 15 * 60
+// Also the time a Brave page outside the known sites needs to be an entry of its own.
+const listedEntrySeconds = 10 * 60
 
 const newlineByte = 0x0a
 const extensionQuestion = 'Is the focus-log extension running?'
@@ -234,7 +234,7 @@ function addSeconds (secondsPerEntry, name, seconds) {
 }
 
 // Ranks the time per entry: one entry per app, with VS Code split by workspace, Brave
-// split by site where known, and other Brave pages of 15 minutes or more on their own.
+// split by site where known, and other Brave pages of 10 minutes or more on their own.
 function rankedUsage (windows) {
   const desktopNames = new Map()
   const secondsPerEntry = new Map()
@@ -252,7 +252,7 @@ function rankedUsage (windows) {
     addSeconds(isBravePage ? secondsPerBravePage : secondsPerEntry, name, focusedWindow.seconds)
   }
   for (const [name, seconds] of secondsPerBravePage) {
-    addSeconds(secondsPerEntry, seconds >= braveOwnEntrySeconds ? name : 'Brave · other tabs', seconds)
+    addSeconds(secondsPerEntry, seconds >= listedEntrySeconds ? name : 'Brave · other tabs', seconds)
   }
   return [...secondsPerEntry].map(([name, seconds]) => {
     const site = braveSites.find(candidate => braveSiteEntryName(candidate) === name)
@@ -280,7 +280,7 @@ function withDuration ({ name, seconds, parts }) {
   return entry
 }
 
-// Returns the entries the break window lists: the top 15 of 15 minutes or more, then the
+// Returns the entries the break window lists: the top 15 of 10 minutes or more, then the
 // rest as Other once it reaches a minute, since durations round down to whole minutes.
 function listedUsage (windows) {
   const ranked = rankedUsage(windows)

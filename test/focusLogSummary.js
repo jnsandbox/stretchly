@@ -86,20 +86,20 @@ describe('today\'s usage from the focus log', () => {
     })
   })
 
-  it('lists a Brave page with 15 minutes today on its own and sums shorter ones as other tabs', async () => {
+  it('lists a Brave page with 10 minutes today on its own and sums shorter ones as other tabs', async () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'brave-browser.desktop', '(3) Inbox - Brave'),
-      { time: '2026-10-20T08:15:00.000+02:00', event: 'title', window_id: 1, app_id: 'brave-browser.desktop', title: 'Perception profiling comparison - Brave' },
-      focus('08:29:59', 2, 'org.gnome.Terminal.desktop', 'bash'),
+      { time: '2026-10-20T08:10:00.000+02:00', event: 'title', window_id: 1, app_id: 'brave-browser.desktop', title: 'Perception profiling comparison - Brave' },
+      focus('08:19:59', 2, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 1, 'brave-browser.desktop', 'Docs - Brave'),
-      event('09:10:00', 'lock')
+      event('09:05:00', 'lock')
     ])
     expect(usage()).toEqual({
-      activeTime: '1h 10m',
+      activeTime: '1h 5m',
       entries: [
-        { name: 'Terminal', duration: '30m' },
-        { name: 'Brave · other tabs', duration: '24m' },
-        { name: 'Brave · Inbox', duration: '15m' }
+        { name: 'Terminal', duration: '40m' },
+        { name: 'Brave · other tabs', duration: '14m' },
+        { name: 'Brave · Inbox', duration: '10m' }
       ]
     })
   })
@@ -137,7 +137,7 @@ describe('today\'s usage from the focus log', () => {
           duration: '24m',
           parts: [{ name: 'jelmer', duration: '10m' }, { name: 'Tooling', duration: '10m' }, { name: 'other chats', duration: '4m' }]
         },
-        { name: 'Other', duration: '10m' }
+        { name: 'Brave · WhatsApp', duration: '10m' }
       ]
     })
   })
@@ -175,15 +175,15 @@ describe('today\'s usage from the focus log', () => {
     expect(entries[15]).toEqual({ name: 'Other', duration: '15m' })
   })
 
-  it('folds entries under 15 minutes into Other, and leaves Other out while it is under a minute', async () => {
+  it('folds entries under 10 minutes into Other, and leaves Other out while it is under a minute', async () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 2, 'firefox.desktop', 'News'),
-      focus('09:14:59', 3, 'chrome.desktop', 'Mail'),
-      focus('09:15:39', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      focus('09:09:59', 3, 'chrome.desktop', 'Mail'),
+      focus('09:10:39', 1, 'org.gnome.Terminal.desktop', 'bash'),
       event('09:30:00', 'lock')
     ])
-    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 14m' }, { name: 'Other', duration: '15m' }])
+    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 19m' }, { name: 'Other', duration: '10m' }])
     await writeFocusLog([
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 2, 'firefox.desktop', 'News'),
