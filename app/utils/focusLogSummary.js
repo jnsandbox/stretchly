@@ -6,7 +6,8 @@ import { lineTime, padded, parsedLogLine } from './logLines.js'
 
 // VS Code reports either app ID, depending on how it was installed.
 const vsCodeAppIds = new Set(['code.desktop', 'com.microsoft.VSCode.desktop'])
-const remoteLabelPrefixes = ['SSH: ', 'Dev Container: ']
+const sshLabelPrefix = 'SSH: '
+const devContainerLabelPrefix = 'Dev Container: '
 const unattributed = '(unattributed)'
 const braveAppId = 'brave-browser.desktop'
 const braveOwnEntrySeconds = 15 * 60
@@ -36,6 +37,7 @@ const braveSites = [
   }
 ]
 const listedEntryCount = 15
+const listedEntrySeconds = 15 * 60
 
 const newlineByte = 0x0a
 const extensionQuestion = 'Is the focus-log extension running?'
@@ -154,8 +156,9 @@ function appName (appId, desktopNames) {
   return desktopNames.get(appId)
 }
 
-// Names the workspace a VS Code window title belongs to, remote label included. The
-// user's window.title setting puts the remote label and the folder first.
+// Names the workspace a VS Code window title belongs to. The user's window.title setting
+// puts the remote label and the folder first. A dev container is named by its container
+// and folder, and by the folder alone while it connects or when the two names match.
 function vsCodeWorkspace (title) {
   if (!title || title === 'Visual Studio Code') return unattributed
   if (title.startsWith('dev-container+')) {
@@ -164,16 +167,20 @@ function vsCodeWorkspace (title) {
     try {
       const authority = JSON.parse(Buffer.from(hex.slice(0, hex.length - hex.length % 2), 'hex').toString('utf8'))
       if (typeof authority.hostPath !== 'string') return unattributed
-      return `Dev Container (connecting): ${basename(authority.hostPath)}`
+      return basename(authority.hostPath)
     } catch {
       return unattributed
     }
   }
   const segments = title.split(' - ').filter(segment => segment !== '')
   if (segments.length === 0) return unattributed
-  if (remoteLabelPrefixes.some(prefix => segments[0].startsWith(prefix))) {
-    return `${segments[0]} / ${segments.length > 1 ? segments[1] : '(no folder)'}`
+  const folder = segments.length > 1 ? segments[1] : '(no folder)'
+  if (segments[0].startsWith(devContainerLabelPrefix)) {
+    // `Dev Container: perception + Claude @ orin1`: the container's name ends at ` + ` or ` @ `.
+    const container = segments[0].slice(devContainerLabelPrefix.length).split(/ [+@] /)[0]
+    return container === folder ? folder : `${container} / ${folder}`
   }
+  if (segments[0].startsWith(sshLabelPrefix)) return `${segments[0]} / ${folder}`
   return segments[0]
 }
 
@@ -273,11 +280,11 @@ function withDuration ({ name, seconds, parts }) {
   return entry
 }
 
-// Returns the entries the break window lists: the top 15 of a minute or more, then the
-// rest as Other. Durations round down, so a shorter entry would read 0m.
+// Returns the entries the break window lists: the top 15 of 15 minutes or more, then the
+// rest as Other once it reaches a minute, since durations round down to whole minutes.
 function listedUsage (windows) {
   const ranked = rankedUsage(windows)
-  const listed = ranked.filter(entry => entry.seconds >= 60).slice(0, listedEntryCount)
+  const listed = ranked.filter(entry => entry.seconds >= listedEntrySeconds).slice(0, listedEntryCount)
   const restSeconds = ranked.filter(entry => !listed.includes(entry)).reduce((total, entry) => total + entry.seconds, 0)
   if (restSeconds >= 60) listed.push({ name: 'Other', seconds: restSeconds })
   return listed.map(withDuration)

@@ -63,24 +63,25 @@ describe('today\'s usage from the focus log', () => {
     expect(usage()).toEqual({ warning: 'No window data today. Is the focus-log extension running?' })
   })
 
-  it('splits VS Code time by workspace, read from the title under either app ID', async () => {
+  it('splits VS Code time by workspace, naming a dev container by container and folder, under either app ID', async () => {
     const connectingTitle = 'dev-container+7b22686f737450617468223a222f686f6d652f6d652f64726f6e655f746f6f6c73227d'
     await writeFocusLog([
       focus('08:00:00', 1, 'code.desktop', 'break_timer - main.js - '),
-      focus('08:40:00', 2, 'com.microsoft.VSCode.desktop', 'Dev Container: break_timer + Claude - break_timer - spec.md - '),
-      focus('09:10:00', 3, 'code.desktop', connectingTitle),
-      focus('09:30:00', 4, 'code.desktop', 'SSH: orin1 - autonomy-engine'),
-      focus('09:40:00', 5, 'code.desktop', 'Visual Studio Code'),
-      focus('09:45:00', 1, 'code.desktop', 'break_timer - main.js - ')
+      focus('08:20:00', 2, 'com.microsoft.VSCode.desktop', 'Dev Container: break_timer + Claude - break_timer - spec.md - '),
+      focus('08:35:00', 3, 'code.desktop', 'Dev Container: perception + Claude @ orin1 - autonomy-engine - main.py - '),
+      focus('09:00:00', 4, 'code.desktop', connectingTitle),
+      focus('09:20:00', 5, 'code.desktop', 'SSH: orin1 - autonomy-engine'),
+      focus('09:40:00', 6, 'code.desktop', 'Visual Studio Code'),
+      event('09:55:00', 'lock')
     ])
     expect(usage()).toEqual({
-      activeTime: '2h 0m',
+      activeTime: '1h 55m',
       entries: [
-        { name: 'VS Code · break_timer', duration: '55m' },
-        { name: 'VS Code · Dev Container: break_timer + Claude / break_timer', duration: '30m' },
-        { name: 'VS Code · Dev Container (connecting): drone_tools', duration: '20m' },
-        { name: 'VS Code · SSH: orin1 / autonomy-engine', duration: '10m' },
-        { name: 'VS Code · (unattributed)', duration: '5m' }
+        { name: 'VS Code · break_timer', duration: '35m' },
+        { name: 'VS Code · perception / autonomy-engine', duration: '25m' },
+        { name: 'VS Code · drone_tools', duration: '20m' },
+        { name: 'VS Code · SSH: orin1 / autonomy-engine', duration: '20m' },
+        { name: 'VS Code · (unattributed)', duration: '15m' }
       ]
     })
   })
@@ -107,36 +108,36 @@ describe('today\'s usage from the focus log', () => {
     const brave = (clock, title) => ({ ...focus(clock, 1, 'brave-browser.desktop', `${title} - Brave`), event: 'title' })
     await writeFocusLog([
       focus('08:00:00', 1, 'brave-browser.desktop', 'jelmer - Ambyon Mattermost - Brave'),
-      brave('08:05:00', '(2) Tooling - Ambyon Mattermost'),
-      brave('08:10:00', 'Mattermost'),
-      brave('08:12:00', 'Link the TensorRT major (!398) · Merge requests · Ambee / autonomy-engine · GitLab'),
-      brave('08:17:00', 'Login shell startup costs 10.6 s per command (#46) · Issue · ambee/claude_issues'),
-      brave('08:22:00', 'gitlab.ambee.nl/ambee/autonomy-engine/-/jobs/15656/raw'),
-      brave('08:25:00', 'Sprint | Jitsi Meet'),
-      brave('08:35:00', 'jitsi.ambyon.care/sprint'),
-      brave('08:37:00', 'Jitsi Meet'),
-      brave('08:40:00', 'WhatsApp'),
-      event('08:45:00', 'lock')
+      brave('08:10:00', '(2) Tooling - Ambyon Mattermost'),
+      brave('08:20:00', 'Mattermost'),
+      brave('08:24:00', 'Link the TensorRT major (!398) · Merge requests · Ambee / autonomy-engine · GitLab'),
+      brave('08:34:00', 'Login shell startup costs 10.6 s per command (#46) · Issue · ambee/claude_issues'),
+      brave('08:44:00', 'gitlab.ambee.nl/ambee/autonomy-engine/-/jobs/15656/raw'),
+      brave('08:50:00', 'Sprint | Jitsi Meet'),
+      brave('09:10:00', 'jitsi.ambyon.care/sprint'),
+      brave('09:14:00', 'Jitsi Meet'),
+      brave('09:20:00', 'WhatsApp'),
+      event('09:30:00', 'lock')
     ])
     expect(usage()).toEqual({
-      activeTime: '45m',
+      activeTime: '1h 30m',
       entries: [
         {
           name: 'Brave · Jitsi',
-          duration: '15m',
-          parts: [{ name: 'Sprint', duration: '10m' }, { name: 'other rooms', duration: '5m' }]
+          duration: '30m',
+          parts: [{ name: 'Sprint', duration: '20m' }, { name: 'other rooms', duration: '10m' }]
         },
         {
           name: 'Brave · GitLab',
-          duration: '13m',
-          parts: [{ name: 'autonomy-engine', duration: '8m' }, { name: 'claude_issues', duration: '5m' }]
+          duration: '26m',
+          parts: [{ name: 'autonomy-engine', duration: '16m' }, { name: 'claude_issues', duration: '10m' }]
         },
         {
           name: 'Brave · Mattermost',
-          duration: '12m',
-          parts: [{ name: 'jelmer', duration: '5m' }, { name: 'Tooling', duration: '5m' }, { name: 'other chats', duration: '2m' }]
+          duration: '24m',
+          parts: [{ name: 'jelmer', duration: '10m' }, { name: 'Tooling', duration: '10m' }, { name: 'other chats', duration: '4m' }]
         },
-        { name: 'Brave · other tabs', duration: '5m' }
+        { name: 'Other', duration: '10m' }
       ]
     })
   })
@@ -145,9 +146,11 @@ describe('today\'s usage from the focus log', () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'brave-browser.desktop', 'IT - Ambyon Mattermost - Brave'),
       { ...focus('08:04:00', 1, 'brave-browser.desktop', 'Tech - Ambyon Mattermost - Brave'), event: 'title' },
-      event('08:08:00', 'lock')
+      { ...focus('08:08:00', 1, 'brave-browser.desktop', 'Ops - Ambyon Mattermost - Brave'), event: 'title' },
+      { ...focus('08:12:00', 1, 'brave-browser.desktop', 'Random - Ambyon Mattermost - Brave'), event: 'title' },
+      event('08:16:00', 'lock')
     ])
-    expect(usage().entries).toEqual([{ name: 'Brave · Mattermost', duration: '8m' }])
+    expect(usage().entries).toEqual([{ name: 'Brave · Mattermost', duration: '16m' }])
   })
 
   it('lists the top 15 entries by desktop name, or title without an app ID, and sums the rest as Other', async () => {
@@ -156,31 +159,31 @@ describe('today\'s usage from the focus log', () => {
     await writeFile(join(applicationsFolder, 'firefox.desktop'),
       '[Desktop Entry]\nName=Firefox Web Browser\nExec=firefox\n\n[Desktop Action new-window]\nName=New Window\n')
     const otherApps = Array.from({ length: 15 }, (_, index) => `app${String(index + 1).padStart(2, '0')}.desktop`)
-    // Firefox first for 30 minutes, then 15 apps of 6 minutes each, the last of them ranked out.
+    // Firefox first for 30 minutes, then 15 apps of 15 minutes each, the last of them ranked out.
     await writeFocusLog([
-      focus('08:00:00', 1, 'firefox.desktop', 'News'),
+      focus('05:00:00', 1, 'firefox.desktop', 'News'),
       ...otherApps.map((appId, index) => {
-        const minutes = 30 + index * 6
-        return focus(`${padTwo(8 + Math.floor(minutes / 60))}:${padTwo(minutes % 60)}:00`, index + 2, appId, appId)
+        const minutes = 30 + index * 15
+        return focus(`${padTwo(5 + Math.floor(minutes / 60))}:${padTwo(minutes % 60)}:00`, index + 2, appId, appId)
       }),
-      event('10:00:00', 'lock')
+      event('09:15:00', 'lock')
     ])
     const { entries } = usage()
     expect(entries).toHaveLength(16)
     expect(entries[0]).toEqual({ name: 'Firefox Web Browser', duration: '30m' })
-    expect(entries.slice(1, 15).every(entry => entry.duration === '6m')).toBe(true)
-    expect(entries[15]).toEqual({ name: 'Other', duration: '6m' })
+    expect(entries.slice(1, 15).every(entry => entry.duration === '15m')).toBe(true)
+    expect(entries[15]).toEqual({ name: 'Other', duration: '15m' })
   })
 
-  it('folds entries under a minute into Other, and leaves Other out while it is under a minute', async () => {
+  it('folds entries under 15 minutes into Other, and leaves Other out while it is under a minute', async () => {
     await writeFocusLog([
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 2, 'firefox.desktop', 'News'),
-      focus('09:00:40', 3, 'chrome.desktop', 'Mail'),
-      focus('09:01:20', 1, 'org.gnome.Terminal.desktop', 'bash'),
+      focus('09:14:59', 3, 'chrome.desktop', 'Mail'),
+      focus('09:15:39', 1, 'org.gnome.Terminal.desktop', 'bash'),
       event('09:30:00', 'lock')
     ])
-    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 28m' }, { name: 'Other', duration: '1m' }])
+    expect(usage().entries).toEqual([{ name: 'Terminal', duration: '1h 14m' }, { name: 'Other', duration: '15m' }])
     await writeFocusLog([
       focus('08:00:00', 1, 'org.gnome.Terminal.desktop', 'bash'),
       focus('09:00:00', 2, 'firefox.desktop', 'News'),
